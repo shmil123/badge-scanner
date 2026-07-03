@@ -152,6 +152,13 @@
   .histrow .nums { display: flex; gap: 14px; font-size: 13px; color: var(--muted); margin-top: 3px; }
   .histrow .nums b { color: var(--text); }
   .histrow .nums b.hotn { color: var(--hot); }
+  #event-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  #event-chips button {
+    padding: 9px 15px; border-radius: 999px; border: 1px solid var(--line);
+    background: rgba(255,255,255,.03); color: var(--muted); font-size: 14px; font-weight: 700;
+    transition: all .12s;
+  }
+  #event-chips button.sel { border-color: var(--lime); color: var(--lime); background: rgba(215,247,91,.1); }
   .thumb { width: 100%; border-radius: 14px; margin-top: 8px; max-height: 180px; object-fit: cover; border: 1px solid var(--line); }
   .row2 { display: flex; gap: 10px; }
   .row2 > div { flex: 1; }
@@ -210,13 +217,15 @@
         <button id="setup-event-badge" title="Read the event name off a badge"
           style="position:absolute; right:6px; top:6px; bottom:6px; width:44px; border:none; border-radius:9px; background:rgba(215,247,91,.14); color:var(--lime); font-size:19px">📷</button>
       </div>
-      <p class="sub" style="font-size:12px; margin-top:8px">Type it, pick a recent one, or tap 📷 to read it off any badge.</p>
+      <div id="event-chips"></div>
+      <p class="sub" style="font-size:12px; margin-top:8px">Tap an event above, type a new one, or tap 📷 to read it off any badge.</p>
       <button class="primary" id="setup-save">Start scanning</button>
       <p class="sub center" id="setup-status" style="margin-top:10px"></p>
     </div>
   </div>
   <p class="sub center" style="margin-top:20px">
     <a class="link" id="setup-reset" href="#" style="font-size:12px; color:var(--dim)">Clear all leads stored on this phone</a>
+    &nbsp;·&nbsp; <span id="ver" style="font-size:11px; color:var(--dim)"></span>
   </p>
 </div>
 
@@ -380,6 +389,7 @@ const CONFIG = {
   SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
   GOOGLE_CLIENT_ID: "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googleusercontent.com",
   ALLOWED_DOMAIN: "classiq.io",
+  APP_VERSION: "v11", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -498,8 +508,21 @@ function fillSetup() {
   $("setup-rep").innerHTML = "<option value=''>— pick your name —</option>" +
     state.remote.reps.map(r => `<option>${esc(r)}</option>`).join("");
   $("setup-event").value = state.event || urlEvent || "";
+  renderEventChips();
   renderSetup();
   $("setup-status").textContent = "";
+}
+function renderEventChips() {
+  const evs = state.remote.events.slice(0, 8);
+  $("event-chips").innerHTML = evs.map(e => `<button type="button" data-ev="${esc(e)}">${esc(e)}</button>`).join("");
+  const mark = () => document.querySelectorAll("#event-chips button")
+    .forEach(b => b.classList.toggle("sel", b.dataset.ev === $("setup-event").value));
+  document.querySelectorAll("#event-chips button").forEach(b => b.onclick = () => {
+    $("setup-event").value = b.dataset.ev;
+    mark();
+  });
+  $("setup-event").oninput = mark;
+  mark();
 }
 function renderSetup() {
   const identified = !!state.rep;
@@ -1025,6 +1048,7 @@ function sameEvent(a, b) {
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
 (async function boot() {
+  $("ver").textContent = CONFIG.APP_VERSION;
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
   if (!CONFIG.APPS_SCRIPT_URL) { show("scr-noconfig"); return; }
   if (window.google) window._gisLoaded(); // gsi script may have loaded before this one
