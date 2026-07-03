@@ -47,10 +47,39 @@ function doPost(e) {
   try {
     if (req.action === "extract") return handleExtract_(req);
     if (req.action === "submit") return handleSubmit_(req);
+    if (req.action === "history") return handleHistory_(req);
     return json_({ ok: false, error: "unknown action" });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }
+}
+
+// ---------- history: per-event aggregates for the app's History/Today tabs ----------
+
+function handleHistory_(req) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureInfraTabs_(ss);
+  var out = [];
+  ss.getSheets().forEach(function (ws) {
+    var name = ws.getName();
+    if (RESERVED_TABS.indexOf(name) !== -1) return;
+    var vals = ws.getDataRange().getValues();
+    var total = 0, hot = 0, mine = 0, pushed = 0;
+    for (var i = 1; i < vals.length; i++) {
+      var r = vals[i];
+      var has = false;
+      for (var j = 0; j < Math.min(r.length, 14); j++) {
+        if (r[j] !== "" && r[j] !== false) { has = true; break; }
+      }
+      if (!has) continue;
+      total++;
+      if (String(r[12]) === "Hot") hot++;                 // Temperature (M)
+      if (req.rep && String(r[8]) === req.rep) mine++;    // Captured By (I)
+      if (r[15]) pushed++;                                // HubSpot Status (P)
+    }
+    out.push({ event: name, total: total, hot: hot, mine: mine, pushed: pushed });
+  });
+  return json_({ ok: true, events: out });
 }
 
 // ---------- extract: badge photo → structured fields via Claude Haiku ----------

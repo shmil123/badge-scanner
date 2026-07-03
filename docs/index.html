@@ -16,8 +16,8 @@
     --bg: #191919; --bg2: #1E1E1E; --card: #232323; --line: #333330;
     --text: #F4F9E9; --muted: #C9CBC0; --dim: #8f9188;
     --lime: #d7f75b; --lime-ink: #1c2405;
-    --hot: #F43764; --warm: #d7f75b; --cold: #119DA4; --teal: #0C7489;
-    --ok: #d7f75b; --danger: #F43764;
+    --hot: #F43764; --teal: #119DA4;
+    --nav-h: 74px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; }
@@ -32,7 +32,8 @@
     -webkit-font-smoothing: antialiased;
   }
   .screen { display: none; min-height: 100dvh; padding: 22px 18px calc(26px + env(safe-area-inset-bottom)); }
-  .screen.active { display: flex; flex-direction: column; animation: rise .32s cubic-bezier(.2,.9,.3,1) both; }
+  .screen.active { display: flex; flex-direction: column; animation: rise .3s cubic-bezier(.2,.9,.3,1) both; }
+  .screen.with-nav { padding-bottom: calc(var(--nav-h) + 20px + env(safe-area-inset-bottom)); }
   @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
   h1 { font-size: 24px; font-weight: 900; letter-spacing: -.02em; }
   h2 { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
@@ -51,13 +52,12 @@
     transition: border-color .15s;
   }
   input:focus, select:focus, textarea:focus { outline: none; border-color: var(--lime); }
-  textarea { min-height: 70px; resize: vertical; }
+  textarea { min-height: 80px; resize: vertical; }
   button { font-family: inherit; cursor: pointer; }
   button.primary {
     width: 100%; padding: 16px; border: none; border-radius: 999px;
     background: var(--lime); color: var(--lime-ink); font-size: 17px; font-weight: 900; margin-top: 16px;
-    letter-spacing: .01em; transition: transform .1s;
-    box-shadow: 0 6px 24px -8px rgba(215,247,91,.45);
+    transition: transform .1s; box-shadow: 0 6px 24px -8px rgba(215,247,91,.45);
   }
   button.primary:active { transform: scale(.97); }
   button.secondary {
@@ -67,28 +67,14 @@
   }
   button.secondary:active { transform: scale(.97); border-color: var(--lime); }
   button:disabled { opacity: .5; }
-  .bigscan {
-    width: 100%; padding: 28px; border: none; border-radius: 24px; margin-top: 18px;
-    background: var(--lime); color: var(--lime-ink); font-size: 21px; font-weight: 900;
-    box-shadow: 0 0 0 1px rgba(215,247,91,.25), 0 14px 44px -12px rgba(215,247,91,.5);
-    transition: transform .1s; position: relative; overflow: hidden;
-  }
-  .bigscan:active { transform: scale(.97); }
-  .bigscan::after {
-    content: ""; position: absolute; inset: 0;
-    background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.35) 48%, transparent 62%);
-    transform: translateX(-120%); animation: sheen 4.5s ease-in-out infinite;
-  }
-  @keyframes sheen { 0%, 72% { transform: translateX(-120%); } 88%, 100% { transform: translateX(120%); } }
+  /* hot toggle */
   .seg { display: flex; gap: 8px; }
   .seg button {
-    flex: 1; padding: 13px 4px; border-radius: 999px; border: 1px solid var(--line);
-    background: var(--bg); color: var(--muted); font-size: 15px; font-weight: 700;
-    transition: all .12s;
+    flex: 1; padding: 14px 4px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--muted); font-size: 15px; font-weight: 700; transition: all .12s;
   }
-  .seg button.sel-hot  { background: var(--hot);  border-color: var(--hot);  color: #fff; box-shadow: 0 4px 18px -6px rgba(244,55,100,.6); }
-  .seg button.sel-warm { background: var(--warm); border-color: var(--warm); color: var(--lime-ink); box-shadow: 0 4px 18px -6px rgba(215,247,91,.6); }
-  .seg button.sel-cold { background: var(--cold); border-color: var(--cold); color: #fff; box-shadow: 0 4px 18px -6px rgba(17,157,164,.6); }
+  .seg button.on-reg { background: rgba(215,247,91,.1); border-color: var(--lime); color: var(--lime); }
+  .seg button.on-hot { background: var(--hot); border-color: var(--hot); color: #fff; box-shadow: 0 4px 18px -6px rgba(244,55,100,.6); }
   .pill {
     display: inline-block; padding: 4px 11px; border-radius: 999px; font-size: 11px;
     font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
@@ -99,15 +85,15 @@
   .banner.red { background: rgba(244,55,100,.1); border-color: rgba(244,55,100,.35); color: #ffaebf; }
   .banner.blue { background: rgba(12,116,137,.14); border-color: rgba(12,116,137,.45); color: #9fd9e2; }
   #toast {
-    position: fixed; left: 18px; right: 18px; bottom: calc(30px + env(safe-area-inset-bottom));
+    position: fixed; left: 18px; right: 18px; bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom));
     background: #262a1a; color: var(--text); padding: 14px 16px; border-radius: 16px;
     font-size: 15px; font-weight: 700; text-align: center; opacity: 0; pointer-events: none;
-    transition: opacity .25s, transform .25s; transform: translateY(6px); z-index: 50;
+    transition: opacity .25s, transform .25s; transform: translateY(6px); z-index: 60;
     border: 1px solid rgba(215,247,91,.35); box-shadow: 0 12px 40px -10px rgba(0,0,0,.7);
   }
   #toast.show { opacity: 1; transform: none; }
-  /* scanner */
-  #videoWrap { position: relative; border-radius: 24px; overflow: hidden; background: #000; flex: 1; min-height: 320px; border: 1px solid var(--line); }
+  /* ---- scanner ---- */
+  #videoWrap { position: relative; border-radius: 24px; overflow: hidden; background: #000; flex: 1; min-height: 300px; border: 1px solid var(--line); }
   #video { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
   .reticle {
     position: absolute; inset: 0; margin: auto; width: 62%; aspect-ratio: 1;
@@ -126,37 +112,84 @@
     animation: scanline 2.2s ease-in-out infinite; box-shadow: 0 0 12px rgba(215,247,91,.8);
   }
   @keyframes scanline { 0%, 100% { top: 8%; } 50% { top: 90%; } }
-  .leadrow { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  #scan-hint {
+    position: absolute; left: 12px; right: 12px; top: 12px; z-index: 5; display: none;
+    background: rgba(25,25,25,.88); border: 1px solid rgba(215,247,91,.4); border-radius: 14px;
+    padding: 12px 14px; font-size: 14px; font-weight: 700; text-align: center; backdrop-filter: blur(6px);
+  }
+  #shutter {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 5;
+    width: 74px; height: 74px; border-radius: 50%; border: 4px solid rgba(244,249,233,.9);
+    background: rgba(215,247,91,.92); box-shadow: 0 6px 28px -6px rgba(0,0,0,.7);
+    transition: transform .08s;
+  }
+  #shutter:active { transform: translateX(-50%) scale(.9); }
+  #shutter::after { content: ""; position: absolute; inset: 6px; border-radius: 50%; border: 2px solid var(--lime-ink); opacity: .35; }
+  #cam-start {
+    position: absolute; inset: 0; z-index: 6; display: none; flex-direction: column; gap: 10px;
+    align-items: center; justify-content: center; background: var(--bg2); border: none;
+    color: var(--text); font-size: 17px; font-weight: 700;
+  }
+  .scanlinks { display: flex; justify-content: center; gap: 22px; margin-top: 12px; }
+  /* ---- stats ---- */
+  .statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .stat { background: linear-gradient(180deg, var(--card), var(--bg2)); border: 1px solid var(--line); border-radius: 20px; padding: 18px 16px; }
+  .stat .n { font-size: 40px; font-weight: 900; letter-spacing: -.03em; line-height: 1.1; }
+  .stat .t { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-top: 6px; }
+  .stat.hero { grid-column: 1 / -1; padding: 24px 20px;
+    background: linear-gradient(135deg, rgba(215,247,91,.14), var(--bg2) 60%); border-color: rgba(215,247,91,.35); }
+  .stat.hero .n { font-size: 64px; color: var(--lime); }
+  .stat .n.hotn { color: var(--hot); }
+  .delta { display: inline-block; margin-top: 8px; padding: 4px 12px; border-radius: 999px;
+    background: rgba(215,247,91,.14); color: var(--lime); font-size: 13px; font-weight: 900; }
+  /* ---- lists ---- */
+  .leadrow { display: flex; justify-content: space-between; align-items: center; padding: 13px 0; border-bottom: 1px solid var(--line); }
   .leadrow:last-child { border-bottom: none; }
   .leadrow .who { font-size: 15px; font-weight: 700; }
   .leadrow .co { font-size: 13px; color: var(--muted); }
+  .histrow { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .histrow:last-child { border-bottom: none; }
+  .histrow .nums { display: flex; gap: 14px; font-size: 13px; color: var(--muted); margin-top: 3px; }
+  .histrow .nums b { color: var(--text); }
+  .histrow .nums b.hotn { color: var(--hot); }
   .thumb { width: 100%; border-radius: 14px; margin-top: 8px; max-height: 180px; object-fit: cover; border: 1px solid var(--line); }
-  .spin {
-    width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--lime);
-    border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
   .row2 { display: flex; gap: 10px; }
   .row2 > div { flex: 1; }
-  .homehead { display: flex; justify-content: space-between; align-items: baseline; }
-  .evt { color: var(--muted); font-size: 13px; margin-top: 3px; }
-  .evt b { color: var(--lime); font-weight: 700; }
   a.link { color: var(--lime); text-decoration: none; font-size: 15px; font-weight: 700; }
   .center { text-align: center; }
+  .evt { color: var(--muted); font-size: 13px; }
+  .evt b { color: var(--lime); font-weight: 700; }
+  /* ---- bottom nav ---- */
+  #bottomnav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: none;
+    height: calc(var(--nav-h) + env(safe-area-inset-bottom));
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    background: rgba(25,25,25,.92); backdrop-filter: blur(14px); border-top: 1px solid var(--line);
+    grid-template-columns: repeat(4, 1fr); gap: 4px;
+  }
+  #bottomnav.show { display: grid; }
+  #bottomnav button {
+    display: flex; flex-direction: column; align-items: center; gap: 3px; justify-content: center;
+    background: none; border: none; border-radius: 14px; color: var(--dim);
+    font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  }
+  #bottomnav button svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  #bottomnav button.cur { color: var(--lime); }
 </style>
 </head>
 <body>
 
-<!-- ============ SETUP / NOT CONFIGURED ============ -->
+<!-- ============ NOT CONFIGURED ============ -->
 <div class="screen" id="scr-noconfig">
   <h1>Not configured</h1>
   <p class="sub" style="margin-top:12px">This app has no backend URL yet. Ask Matan — the Apps Script URL needs to be set in the app's CONFIG.</p>
 </div>
 
+<!-- ============ DAILY SETUP ============ -->
 <div class="screen" id="scr-setup">
   <div class="wordmark">Classiq</div>
   <h1 style="margin-top:6px">Badge Scanner</h1>
-  <p class="sub">One-time setup for this phone</p>
+  <p class="sub" id="setup-sub">Quick check-in — once a day</p>
   <div class="card" style="margin-top:18px">
     <label for="setup-event">Event</label>
     <input id="setup-event" list="event-list" placeholder="e.g. Q2B 2026" autocomplete="off">
@@ -178,51 +211,88 @@
   </div>
 </div>
 
-<!-- ============ HOME ============ -->
-<div class="screen" id="scr-home">
-  <div class="homehead">
+<!-- ============ SCAN (default tab) ============ -->
+<div class="screen with-nav" id="scr-scan">
+  <div class="topbar" style="margin-bottom:12px">
     <div>
       <div class="wordmark">Classiq</div>
-      <h1 style="margin-top:6px">Badge Scanner</h1>
-      <div class="evt" id="home-evt"></div>
+      <div class="evt" id="scan-evt" style="margin-top:4px"></div>
     </div>
-    <a class="link" id="home-settings" href="#">Change</a>
-  </div>
-  <div class="banner red" id="home-stale" style="display:none">
-    ⚠️ Unsynced leads from over 12 hours ago — tap Sync now before you lose them.
-  </div>
-  <button class="bigscan" id="home-scan" style="margin-top:16px">📷 &nbsp;Scan badge QR</button>
-  <button class="secondary" id="home-photo">🪪 &nbsp;Photo of badge</button>
-  <button class="secondary" id="home-manual">⌨️ &nbsp;Type manually</button>
-  <div class="card" style="margin-top:18px">
-    <div style="display:flex; justify-content:space-between; align-items:center">
-      <h2 style="margin:0">Captured <span id="home-count"></span></h2>
-      <button id="home-sync" style="background:none;border:1px solid var(--line);color:var(--accent);border-radius:8px;padding:7px 12px;font-size:14px">Sync now</button>
-    </div>
-    <div id="home-list" style="margin-top:6px"></div>
-  </div>
-</div>
-
-<!-- ============ QR SCAN ============ -->
-<div class="screen" id="scr-scan">
-  <div class="topbar">
-    <button class="back" id="scan-back">‹ Back</button>
-    <h2 style="margin:0">Aim at the badge QR</h2>
-    <span style="width:44px"></span>
+    <a class="link" id="scan-settings" href="#" style="font-size:13px">Change</a>
   </div>
   <div id="videoWrap">
     <video id="video" playsinline muted></video>
     <div class="reticle"></div>
+    <div id="scan-hint"></div>
+    <button id="shutter" aria-label="Take photo"></button>
+    <button id="cam-start">📷<br>Tap to start the camera</button>
   </div>
-  <button class="secondary" id="scan-photo">Badge has no QR? Take a photo instead</button>
-  <div class="card" id="scan-camhelp" style="display:none">
-    Camera is blocked. On iPhone: Settings → Safari (or aA menu → Website Settings) → Camera → Allow, then reload.
-    Or use <b>Type manually</b> below.
-    <button class="secondary" id="scan-manual">Type manually</button>
+  <p class="sub center" style="margin-top:10px">Aim at the badge — QR reads by itself, or press the button to photograph the badge.</p>
+  <div class="scanlinks">
+    <a class="link" id="scan-manual" href="#" style="font-size:14px">Type manually</a>
+    <a class="link" id="scan-upload" href="#" style="font-size:14px">Upload photo</a>
+  </div>
+  <div class="card" id="scan-camhelp" style="display:none; margin-top:12px">
+    Camera is blocked. On iPhone: aA menu → Website Settings → Camera → Allow, then reload.
+    Meanwhile use <b>Type manually</b> or <b>Upload photo</b> above.
   </div>
 </div>
 
-<!-- ============ DETAILS FORM ============ -->
+<!-- ============ TODAY (stats) ============ -->
+<div class="screen with-nav" id="scr-stats">
+  <div class="topbar" style="margin-bottom:12px">
+    <div>
+      <div class="wordmark">Classiq</div>
+      <h1 style="margin-top:6px">Today</h1>
+      <div class="evt" id="stats-evt"></div>
+    </div>
+  </div>
+  <div class="banner red" id="stats-stale" style="display:none">
+    ⚠️ Unsynced leads from over 12 hours ago — tap Sync below before you lose them.
+  </div>
+  <div class="statgrid">
+    <div class="stat hero">
+      <div class="n" id="st-today">0</div>
+      <div class="t">Leads captured today</div>
+      <span class="delta" id="st-delta" style="display:none"></span>
+    </div>
+    <div class="stat"><div class="n hotn" id="st-hot">0</div><div class="t">🔥 Hot today</div></div>
+    <div class="stat"><div class="n" id="st-pending">0</div><div class="t">Waiting to sync</div></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h2 style="margin-bottom:4px">Team — whole event</h2>
+    <p class="sub" id="st-team">—</p>
+  </div>
+  <button class="secondary" id="st-sync">Sync now</button>
+</div>
+
+<!-- ============ LEADS ============ -->
+<div class="screen with-nav" id="scr-leads">
+  <div class="topbar" style="margin-bottom:12px">
+    <div>
+      <div class="wordmark">Classiq</div>
+      <h1 style="margin-top:6px">My leads</h1>
+      <div class="evt" id="leads-evt"></div>
+    </div>
+    <a class="link" id="leads-add" href="#">+ Add</a>
+  </div>
+  <div class="card"><div id="leads-list"></div></div>
+</div>
+
+<!-- ============ HISTORY ============ -->
+<div class="screen with-nav" id="scr-history">
+  <div class="topbar" style="margin-bottom:12px">
+    <div>
+      <div class="wordmark">Classiq</div>
+      <h1 style="margin-top:6px">All events</h1>
+      <div class="evt" id="hist-updated"></div>
+    </div>
+    <a class="link" id="hist-refresh" href="#">Refresh</a>
+  </div>
+  <div class="card"><div id="hist-list"><p class="sub">Loading…</p></div></div>
+</div>
+
+<!-- ============ LEAD FORM ============ -->
 <div class="screen" id="scr-form">
   <div class="topbar">
     <button class="back" id="form-back">‹ Cancel</button>
@@ -233,15 +303,15 @@
     🪪 Photo saved — name, title &amp; company are read automatically in the background.
   </div>
   <div class="card" id="form-photocard" style="display:none">
-    <img id="form-thumb" class="thumb" alt="badge photo">
+    <img id="form-thumb" class="thumb" style="margin-top:0" alt="badge photo">
     <p class="sub center" style="margin-top:8px">
       <a class="link" id="form-showfields" href="#">Type contact details myself</a>
     </p>
   </div>
   <div class="card" id="form-fieldscard">
     <div class="row2">
-      <div><label>First name</label><input id="f-first" autocomplete="off"></div>
-      <div><label>Last name</label><input id="f-last" autocomplete="off"></div>
+      <div><label style="margin-top:0">First name</label><input id="f-first" autocomplete="off"></div>
+      <div><label style="margin-top:0">Last name</label><input id="f-last" autocomplete="off"></div>
     </div>
     <label>Title</label><input id="f-title" autocomplete="off">
     <label>Company</label><input id="f-company" autocomplete="off">
@@ -249,25 +319,35 @@
     <label>Phone</label><input id="f-phone" type="tel" autocomplete="off">
   </div>
   <div class="card">
-    <label style="margin-top:0">Lead temperature</label>
-    <div class="seg" id="f-temp">
+    <label style="margin-top:0">Hot lead?</label>
+    <div class="seg" id="f-hot">
+      <button data-v="">Regular</button>
       <button data-v="Hot">🔥 Hot</button>
-      <button data-v="Warm">Warm</button>
-      <button data-v="Cold">Cold</button>
     </div>
-    <label>Follow-up</label>
-    <select id="f-followup">
-      <option value="">— choose —</option>
-      <option>Book demo</option>
-      <option>Send materials</option>
-      <option>Add to nurture</option>
-      <option>No action</option>
-    </select>
-    <label>Note (optional)</label>
-    <textarea id="f-note" placeholder="What did they ask about?"></textarea>
+    <label>Notes — required</label>
+    <textarea id="f-note" placeholder="What did they ask about? What's next?"></textarea>
   </div>
   <button class="primary" id="form-save">Save lead</button>
 </div>
+
+<nav id="bottomnav">
+  <button data-tab="scan" class="cur">
+    <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h2l1.5-2h7L17 5h2a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>
+    Scan
+  </button>
+  <button data-tab="stats">
+    <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+    Today
+  </button>
+  <button data-tab="leads">
+    <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+    Leads
+  </button>
+  <button data-tab="history">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+    History
+  </button>
+</nav>
 
 <div id="toast"></div>
 <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none">
@@ -292,12 +372,17 @@ const state = {
   rep: localStorage.getItem("bs_rep") || "",
   repEmail: localStorage.getItem("bs_rep_email") || "",
   remote: JSON.parse(localStorage.getItem("bs_remote") || '{"events":[],"reps":[]}'),
-  draft: null,        // lead being edited in the form
-  photoTarget: "lead", // "lead" | "event" (setup-screen event detection)
+  history: JSON.parse(localStorage.getItem("bs_history") || "null"),
+  draft: null,
+  photoTarget: "lead",      // "lead" | "event" (setup-screen event detection)
   stream: null,
   scanTimer: null,
+  qrMuted: false,           // true after an info-less QR: stop decoding, photo only
+  pendingBadgeId: "",
   syncing: false,
+  tab: "scan",
 };
+const todayStr = () => new Date().toDateString();
 
 // ---------------- IndexedDB queue ----------------
 const DB = {
@@ -335,8 +420,18 @@ const DB = {
 function show(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   $(id).classList.add("active");
+  $("bottomnav").classList.toggle("show", $(id).classList.contains("with-nav"));
   if (id !== "scr-scan") stopCamera();
 }
+function go(tab) {
+  state.tab = tab;
+  document.querySelectorAll("#bottomnav button").forEach(b => b.classList.toggle("cur", b.dataset.tab === tab));
+  if (tab === "scan") { show("scr-scan"); startCamera(); }
+  if (tab === "stats") { show("scr-stats"); renderStats(); }
+  if (tab === "leads") { show("scr-leads"); renderLeads(); }
+  if (tab === "history") { show("scr-history"); renderHistory(false); }
+}
+document.querySelectorAll("#bottomnav button").forEach(b => b.onclick = () => go(b.dataset.tab));
 let toastTimer;
 function toast(msg, ms = 2400) {
   $("toast").textContent = msg;
@@ -366,7 +461,7 @@ async function refreshRemoteConfig() {
   } catch (e) { /* offline — cached config is fine */ }
 }
 
-// ---------------- setup screen ----------------
+// ---------------- daily setup ----------------
 function fillSetup() {
   const urlEvent = new URLSearchParams(location.search).get("event");
   $("event-list").innerHTML = state.remote.events.map(e => `<option>${esc(e)}</option>`).join("");
@@ -401,7 +496,8 @@ $("setup-save").onclick = () => {
   state.event = ev; state.rep = rp;
   localStorage.setItem("bs_event", ev);
   localStorage.setItem("bs_rep", rp);
-  goHome();
+  localStorage.setItem("bs_confirm_date", todayStr());
+  go("scan");
 };
 
 // ---------------- Google sign-in (rep identity) ----------------
@@ -426,52 +522,34 @@ function onGoogleCredential(resp) {
   toast("Signed in as " + state.rep + " ✓");
 }
 
-// ---------------- home screen ----------------
-async function goHome() {
-  $("home-evt").innerHTML = `<b>${esc(state.event)}</b> · ${esc(state.rep)}`;
-  const leads = (await DB.all()).sort((a, b) => b.createdAt - a.createdAt);
-  const pending = leads.filter(l => l.status === "pending");
-  $("home-count").textContent = `(${leads.length})`;
-  $("home-sync").textContent = pending.length ? `Sync now (${pending.length})` : "Synced ✓";
-  $("home-stale").style.display =
-    pending.some(l => Date.now() - l.createdAt > 12 * 3600e3) ? "" : "none";
-  $("home-list").innerHTML = leads.slice(0, 50).map(l => {
-    const f = l.lead.fields || {};
-    const who = esc([f.first_name, f.last_name].filter(Boolean).join(" ")) ||
-      (l.photoBlob ? "<i>photo — reading in background</i>" : "<i>no name yet</i>");
-    return `<div class="leadrow" data-uuid="${l.uuid}">
-      <div><div class="who">${who} <span style="color:var(--muted);font-weight:400;font-size:13px">›</span></div><div class="co">${esc(f.company || "")}</div></div>
-      <span class="pill ${l.status}">${l.status === "synced" ? "synced" : "pending"}</span>
-    </div>`;
-  }).join("") || `<p class="sub" style="padding:10px 0">No leads yet — go scan!</p>`;
-  document.querySelectorAll("#home-list .leadrow").forEach(el => el.onclick = () => editLead(el.dataset.uuid));
-  show("scr-home");
-}
-$("home-settings").onclick = (e) => { e.preventDefault(); fillSetup(); show("scr-setup"); };
-$("home-scan").onclick = () => startScan();
-$("home-photo").onclick = () => { state.draft = null; $("photoInput").click(); };
-$("home-manual").onclick = () => openForm({ mode: "manual" });
-$("home-sync").onclick = () => syncQueue(true);
-
-// ---------------- QR scanning ----------------
-async function startScan() {
-  show("scr-scan");
+// ---------------- unified camera: QR auto-read + photo shutter ----------------
+async function startCamera() {
+  $("scan-evt").innerHTML = `<b>${esc(state.event)}</b> · ${esc(state.rep)}`;
   $("scan-camhelp").style.display = "none";
+  $("scan-hint").style.display = "none";
+  $("cam-start").style.display = "none";
+  state.qrMuted = false;
+  state.pendingBadgeId = "";
+  if (state.stream) return; // already running
   try {
     state.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false,
+      video: { facingMode: "environment", width: { ideal: 1600 } }, audio: false,
     });
   } catch (err) {
-    $("scan-camhelp").style.display = "";
+    if (err && (err.name === "NotAllowedError" || err.name === "SecurityError")) {
+      $("scan-camhelp").style.display = "";
+    } else {
+      $("cam-start").style.display = "flex"; // needs a tap (iOS gesture rules) or transient error
+    }
     return;
   }
   const video = $("video");
   video.srcObject = state.stream;
-  await video.play();
+  try { await video.play(); } catch (e) { $("cam-start").style.display = "flex"; return; }
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   state.scanTimer = setInterval(() => {
-    if (!video.videoWidth) return;
+    if (state.qrMuted || !video.videoWidth) return;
     const scale = 640 / video.videoWidth;
     canvas.width = 640;
     canvas.height = Math.round(video.videoHeight * scale);
@@ -485,24 +563,47 @@ function stopCamera() {
   clearInterval(state.scanTimer);
   state.scanTimer = null;
   if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
+  $("video").srcObject = null;
 }
-$("scan-back").onclick = () => goHome();
-$("scan-photo").onclick = () => { stopCamera(); state.draft = null; $("photoInput").click(); };
-$("scan-manual").onclick = () => openForm({ mode: "manual" });
+$("cam-start").onclick = () => startCamera();
+$("scan-settings").onclick = (e) => { e.preventDefault(); fillSetup(); show("scr-setup"); };
+$("scan-manual").onclick = (e) => { e.preventDefault(); openForm({ mode: "manual" }); };
+$("scan-upload").onclick = (e) => { e.preventDefault(); state.photoTarget = "lead"; $("photoInput").click(); };
 
 function onQrDecoded(raw) {
-  stopCamera();
-  if (navigator.vibrate) navigator.vibrate(80);
   const parsed = parseBadgePayload(raw);
   if (parsed) {
+    if (navigator.vibrate) navigator.vibrate(80);
     toast("Badge QR read ✓");
     openForm({ fields: parsed, mode: "qr" });
-  } else {
-    toast("This QR has no contact info — snap a photo of the badge instead", 3500);
-    state.draft = { badgeId: raw.slice(0, 120) };
-    setTimeout(() => $("photoInput").click(), 400);
+    return;
   }
+  // Info-less QR: mute the decoder for the rest of this camera session so it
+  // can't re-trigger, keep the raw id, and point the rep at the shutter.
+  state.qrMuted = true;
+  state.pendingBadgeId = raw.slice(0, 120);
+  if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+  const hint = $("scan-hint");
+  hint.textContent = "This QR has no contact info — press the button to photograph the badge instead 👇";
+  hint.style.display = "";
 }
+
+// Photo shutter: grab a full-res frame from the live stream
+$("shutter").onclick = () => {
+  const video = $("video");
+  if (!video.videoWidth) { state.photoTarget = "lead"; $("photoInput").click(); return; }
+  const max = 1280;
+  const s = Math.min(1, max / Math.max(video.videoWidth, video.videoHeight));
+  const c = document.createElement("canvas");
+  c.width = Math.round(video.videoWidth * s);
+  c.height = Math.round(video.videoHeight * s);
+  c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+  c.toBlob((blob) => {
+    if (!blob) { toast("Couldn't capture — try again"); return; }
+    if (navigator.vibrate) navigator.vibrate(60);
+    openForm({ photoBlob: blob, badgeId: state.pendingBadgeId, mode: "photo" });
+  }, "image/jpeg", 0.7);
+};
 
 // vCard / MECARD parsing; returns null for opaque payloads
 function parseBadgePayload(raw) {
@@ -532,20 +633,18 @@ function parseBadgePayload(raw) {
     f.last_name = (n[0] || "").trim(); f.first_name = (n[1] || "").trim();
     return (f.first_name || f.last_name || f.email) ? f : null;
   }
-  // bare email or "email in text" payloads
   const email = raw.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
   if (email) return { first_name: "", last_name: "", title: "", company: "", email: email[0], phone: "", linkedin: "" };
   return null; // opaque registration ID
 }
 
-// ---------------- photo capture ----------------
+// ---------------- photo via file input (fallback + event-name detection) ----------------
 $("photoInput").addEventListener("change", async () => {
   const file = $("photoInput").files[0];
   $("photoInput").value = "";
   if (!file) return;
   const blob = await downscale(file);
 
-  // Setup screen: photo is only used to detect the event name
   if (state.photoTarget === "event") {
     state.photoTarget = "lead";
     if (!navigator.onLine) { toast("Need internet to read the badge — type the event name instead"); return; }
@@ -562,12 +661,7 @@ $("photoInput").addEventListener("change", async () => {
     $("setup-status").textContent = "";
     return;
   }
-
-  // Lead photo: no waiting — extraction happens server-side during sync.
-  const draft = state.draft || {};
-  draft.photoBlob = blob;
-  draft.mode = "photo";
-  openForm(draft);
+  openForm({ photoBlob: blob, mode: "photo" });
 });
 
 function downscale(file) {
@@ -593,28 +687,25 @@ function blobToBase64(blob) {
   });
 }
 
-// ---------------- details form ----------------
-// modes: "qr" (prefilled fields) | "photo" (photo + categorization only) |
-//        "manual" (empty fields) | "edit" (existing lead, everything shown)
+// ---------------- lead form ----------------
+// modes: "qr" (prefilled fields) | "photo" (photo + hot/notes only) |
+//        "manual" (empty fields) | "edit" (existing lead)
 function openForm(draft) {
   state.draft = draft || {};
   const mode = state.draft.mode || "manual";
   ["f-first","f-last","f-title","f-company","f-email","f-phone","f-note"].forEach(id => $(id).value = "");
-  $("f-followup").value = "";
-  setTemp("");
-  $("form-title").textContent = mode === "edit" ? "Edit lead" : "Lead details";
+  setHot("");
+  $("form-title").textContent = mode === "edit" ? "Edit lead" : "New lead";
   $("form-save").textContent = mode === "edit" ? "Save changes" : "Save lead";
   $("form-photonote").style.display = mode === "photo" ? "" : "none";
   const hasPhoto = !!state.draft.photoBlob;
   $("form-photocard").style.display = hasPhoto ? "" : "none";
   if (hasPhoto) $("form-thumb").src = URL.createObjectURL(state.draft.photoBlob);
-  // photo capture: hide the contact fields — they're read in the background
   $("form-fieldscard").style.display = mode === "photo" ? "none" : "";
   $("form-showfields").parentElement.style.display = mode === "photo" ? "" : "none";
   if (state.draft.fields) fillFields(state.draft.fields);
   if (mode === "edit") {
-    setTemp(state.draft.temperature || "");
-    $("f-followup").value = state.draft.followUp || "";
+    setHot(state.draft.temperature === "Hot" ? "Hot" : "");
     $("f-note").value = state.draft.note || "";
   }
   show("scr-form");
@@ -624,17 +715,15 @@ $("form-showfields").onclick = (e) => {
   $("form-fieldscard").style.display = "";
   $("form-showfields").parentElement.style.display = "none";
 };
-
 async function editLead(uuid) {
   const rec = await DB.get(uuid);
   if (!rec) return;
   openForm({
     mode: "edit", editUuid: uuid,
     fields: rec.lead.fields, photoBlob: rec.photoBlob,
-    temperature: rec.lead.temperature, followUp: rec.lead.followUp,
-    note: rec.lead.note, badgeId: rec.lead.badgeId,
-    linkedin: (rec.lead.fields || {}).linkedin, createdAt: rec.createdAt,
-    capturedAt: rec.lead.capturedAt,
+    temperature: rec.lead.temperature, note: rec.lead.note,
+    badgeId: rec.lead.badgeId, linkedin: (rec.lead.fields || {}).linkedin,
+    createdAt: rec.createdAt, capturedAt: rec.lead.capturedAt,
   });
 }
 function fillFields(f) {
@@ -647,17 +736,19 @@ function fillFields(f) {
   $("f-phone").value = f.phone || $("f-phone").value;
   if (f.linkedin) state.draft.linkedin = f.linkedin;
 }
-let tempSel = "";
-function setTemp(v) {
-  tempSel = v;
-  document.querySelectorAll("#f-temp button").forEach(b => {
-    b.className = b.dataset.v === v ? "sel-" + v.toLowerCase() : "";
+let hotSel = "";
+function setHot(v) {
+  hotSel = v;
+  document.querySelectorAll("#f-hot button").forEach(b => {
+    b.className = b.dataset.v === v ? (v === "Hot" ? "on-hot" : "on-reg") : "";
   });
 }
-document.querySelectorAll("#f-temp button").forEach(b => b.onclick = () => setTemp(b.dataset.v));
-$("form-back").onclick = () => goHome();
+document.querySelectorAll("#f-hot button").forEach(b => b.onclick = () => setHot(b.dataset.v));
+$("form-back").onclick = () => go(state.draft && state.draft.mode === "edit" ? "leads" : "scan");
 
 $("form-save").onclick = async () => {
+  const note = $("f-note").value.trim();
+  if (!note) { toast("Notes are required — even two words help the follow-up"); $("f-note").focus(); return; }
   const fields = {
     first_name: $("f-first").value.trim(), last_name: $("f-last").value.trim(),
     title: $("f-title").value.trim(), company: $("f-company").value.trim(),
@@ -673,18 +764,92 @@ $("form-save").onclick = async () => {
     photoBlob: state.draft.photoBlob || null,
     lead: {
       event: state.event, rep: state.rep, repEmail: state.repEmail, fields,
-      temperature: tempSel, followUp: $("f-followup").value,
-      note: $("f-note").value.trim(), badgeId: state.draft.badgeId || "",
+      temperature: hotSel, followUp: "",
+      note, badgeId: state.draft.badgeId || "",
       capturedAt: state.draft.capturedAt || new Date().toISOString(),
     },
   };
   await DB.put(rec);
-  const wasEdit = !!state.draft.editUuid;
+  const wasEdit = state.draft.mode === "edit";
   state.draft = null;
-  toast(wasEdit ? "Changes saved — syncing ✓" : "Lead saved ✓");
-  goHome();
+  toast(wasEdit ? "Changes saved ✓" : (hotSel === "Hot" ? "🔥 Hot lead saved!" : "Lead saved ✓"));
+  go(wasEdit ? "leads" : "scan"); // back to the camera for the next badge
   syncQueue(false);
 };
+
+// ---------------- Today (stats) ----------------
+async function renderStats() {
+  $("stats-evt").innerHTML = `<b>${esc(state.event)}</b> · ${esc(state.rep)}`;
+  const all = await DB.all();
+  const today = all.filter(l => new Date(l.createdAt).toDateString() === todayStr());
+  const yest = all.filter(l => {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    return new Date(l.createdAt).toDateString() === d.toDateString();
+  });
+  const pending = all.filter(l => l.status === "pending");
+  $("st-today").textContent = today.length;
+  $("st-hot").textContent = today.filter(l => l.lead.temperature === "Hot").length;
+  $("st-pending").textContent = pending.length;
+  $("st-sync").textContent = pending.length ? `Sync now (${pending.length})` : "All synced ✓";
+  const delta = today.length - yest.length;
+  $("st-delta").style.display = (delta > 0 && yest.length > 0) ? "" : "none";
+  $("st-delta").textContent = `↑ ${delta} more than yesterday`;
+  $("stats-stale").style.display =
+    pending.some(l => Date.now() - l.createdAt > 12 * 3600e3) ? "" : "none";
+  // team numbers for the whole event, from the last history fetch
+  const ev = (state.history || { events: [] }).events.find(e => e.event === state.event);
+  $("st-team").innerHTML = ev
+    ? `<b style="color:var(--text)">${ev.total}</b> leads captured by the whole team · <b style="color:var(--hot)">${ev.hot} hot</b> — you brought ${ev.mine}`
+    : "Open the History tab once (online) to load team numbers.";
+}
+$("st-sync").onclick = () => syncQueue(true);
+
+// ---------------- Leads (editable list) ----------------
+async function renderLeads() {
+  $("leads-evt").innerHTML = `<b>${esc(state.event)}</b> · tap a lead to edit`;
+  const leads = (await DB.all()).sort((a, b) => b.createdAt - a.createdAt);
+  $("leads-list").innerHTML = leads.map(l => {
+    const f = l.lead.fields || {};
+    const who = esc([f.first_name, f.last_name].filter(Boolean).join(" ")) ||
+      (l.photoBlob ? "<i>photo — reading in background</i>" : "<i>no name yet</i>");
+    const hot = l.lead.temperature === "Hot" ? " 🔥" : "";
+    return `<div class="leadrow" data-uuid="${l.uuid}">
+      <div><div class="who">${who}${hot} <span style="color:var(--dim);font-weight:400;font-size:13px">›</span></div>
+      <div class="co">${esc(f.company || "")}</div></div>
+      <span class="pill ${l.status}">${l.status === "synced" ? "synced" : "pending"}</span>
+    </div>`;
+  }).join("") || `<p class="sub" style="padding:10px 0">No leads on this phone yet — go scan!</p>`;
+  document.querySelectorAll("#leads-list .leadrow").forEach(el => el.onclick = () => editLead(el.dataset.uuid));
+}
+$("leads-add").onclick = (e) => { e.preventDefault(); openForm({ mode: "manual" }); };
+
+// ---------------- History (all events, from the sheet) ----------------
+async function renderHistory(force) {
+  if (state.history && !force) paintHistory();
+  if (!navigator.onLine) { if (!state.history) $("hist-list").innerHTML = `<p class="sub">Offline — connect once to load event history.</p>`; return; }
+  try {
+    const r = await api({ action: "history", rep: state.rep });
+    if (r.ok) {
+      state.history = { events: r.events, at: Date.now() };
+      localStorage.setItem("bs_history", JSON.stringify(state.history));
+      paintHistory();
+    }
+  } catch (e) {
+    if (!state.history) $("hist-list").innerHTML = `<p class="sub">Couldn't reach the server — try Refresh.</p>`;
+  }
+}
+function paintHistory() {
+  const h = state.history;
+  $("hist-updated").textContent = "Updated " + new Date(h.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  $("hist-list").innerHTML = h.events.map(e => `
+    <div class="histrow">
+      <div>
+        <div class="who">${esc(e.event)}${e.event === state.event ? ' <span class="pill synced">current</span>' : ""}</div>
+        <div class="nums"><span><b>${e.total}</b> leads</span><span><b class="hotn">${e.hot}</b> hot</span><span><b>${e.mine}</b> yours</span><span><b>${e.pushed}</b> in HubSpot</span></div>
+      </div>
+    </div>`).join("") || `<p class="sub">No events yet.</p>`;
+}
+$("hist-refresh").onclick = (e) => { e.preventDefault(); $("hist-list").innerHTML = `<p class="sub">Loading…</p>`; renderHistory(true); };
 
 // ---------------- sync engine ----------------
 async function syncQueue(manual) {
@@ -704,8 +869,7 @@ async function syncQueue(manual) {
         const r = await api(body);
         if (r.ok) {
           rec.status = "synced";
-          // server may have extracted contact details from the photo — pull them in
-          if (r.fields) {
+          if (r.fields) { // server may have extracted contact details from the photo
             const cur = rec.lead.fields || {};
             for (const k of ["first_name","last_name","title","company","email","phone","linkedin"]) {
               if (r.fields[k]) cur[k] = cur[k] || r.fields[k];
@@ -719,7 +883,8 @@ async function syncQueue(manual) {
     }
   } finally { state.syncing = false; }
   if (manual || sent) toast(failed ? `Synced ${sent}, ${failed} failed — will retry` : sent ? `Synced ${sent} lead${sent > 1 ? "s" : ""} ✓` : "Nothing to sync");
-  if ($("scr-home").classList.contains("active")) goHome();
+  if (state.tab === "stats" && $("scr-stats").classList.contains("active")) renderStats();
+  if (state.tab === "leads" && $("scr-leads").classList.contains("active")) renderLeads();
 }
 window.addEventListener("online", () => syncQueue(false));
 
@@ -734,8 +899,14 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<"
   refreshRemoteConfig().then(() => {
     if ($("scr-setup").classList.contains("active")) fillSetup();
   });
-  if (state.event && state.rep) { goHome(); syncQueue(false); }
-  else { fillSetup(); show("scr-setup"); }
+  const confirmedToday = localStorage.getItem("bs_confirm_date") === todayStr();
+  if (state.event && state.rep && confirmedToday) {
+    go("scan"); // straight into the camera
+  } else {
+    fillSetup();
+    show("scr-setup");
+  }
+  syncQueue(false);
 })();
 </script>
 </body>

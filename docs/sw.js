@@ -1,6 +1,6 @@
 // Cache-first app shell so the scanner works on dead event WiFi.
 // Bump CACHE_VERSION whenever any shell file changes — that's the deploy signal.
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v5";
 const CACHE_NAME = "badge-scanner-" + CACHE_VERSION;
 const SHELL = ["./", "index.html", "jsqr.min.js", "manifest.webmanifest", "icon.svg", "fonts/lato-400.woff2", "fonts/lato-700.woff2", "fonts/lato-900.woff2"];
 
