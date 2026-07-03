@@ -13,10 +13,10 @@
 var HEADERS = [
   "First Name", "Last Name", "Title", "Company", "Email", "Phone",
   "LinkedIn URL", "Event", "Captured By", "Captured At", "Source",
-  "Rep Note", "Temperature", "Follow-up", "ICP Fit", "Why Relevant",
+  "Rep Note", "Temperature", "Follow-up",
   "Push?", "HubSpot Status", "Badge Photo"
 ];
-var PUSH_COL = 17; // "Push?" checkbox column (Q)
+var PUSH_COL = 15; // "Push?" checkbox column (O)
 var RESERVED_TABS = ["TEMPLATE", "Config", "_sync"];
 var HAIKU_MODEL = "claude-haiku-4-5-20251001";
 var PHOTO_FOLDER = "Badge Scanner Photos";
@@ -159,7 +159,7 @@ function handleSubmit_(req) {
       lead.capturedAt || new Date().toISOString(), "badge",
       composeRepNote_(lead, fields),
       lead.temperature || "", lead.followUp || "",
-      "", "", false, "", photoUrl
+      false, "", photoUrl
     ]]);
     sync.appendRow([req.uuid, new Date().toISOString(), ws.getName(), row, lead.repEmail || ""]);
     return json_({ ok: true, row: row, event: ws.getName(), fields: publicFields_(fields) });
@@ -170,7 +170,7 @@ function handleSubmit_(req) {
 
 // Later edits from the app update the same row. Non-empty incoming values win;
 // empty incoming values never blank out data already in the sheet. Review-owned
-// columns (ICP Fit, Why Relevant, Push?, HubSpot Status, Badge Photo) are untouched.
+// columns (Push?, HubSpot Status, Badge Photo) are untouched.
 function updateRow_(ss, existing, lead, fields) {
   var ws = ss.getSheetByName(existing.tab);
   if (!ws) return json_({ ok: false, error: "tab gone: " + existing.tab });
@@ -241,11 +241,17 @@ function ensureEventTab_(ss, name) {
   return fresh;
 }
 
-// Upgrade tabs from the original 16-column layout: insert Temperature/Follow-up
-// after Rep Note (existing checkbox validation shifts along automatically) and
-// add the Badge Photo column at the end. Safe to call repeatedly.
+// Upgrade tabs from older layouts to the 17-column schema: drop the legacy
+// ICP Fit / Why Relevant pair, insert Temperature/Follow-up after Rep Note
+// (checkbox validation shifts along automatically), add Badge Photo at the end.
+// Safe to call repeatedly.
 function migrateTab_(ws) {
   var head = ws.getRange(1, 1, 1, Math.max(ws.getLastColumn(), 1)).getValues()[0];
+  var icp = head.indexOf("ICP Fit");
+  if (icp !== -1) {
+    ws.deleteColumns(icp + 1, 2); // ICP Fit + adjacent Why Relevant
+    head = ws.getRange(1, 1, 1, ws.getLastColumn()).getValues()[0];
+  }
   if (head[12] !== "Temperature") {
     ws.insertColumnsAfter(12, 2);
     ws.getRange(1, 13, 1, 2).setValues([["Temperature", "Follow-up"]]).setFontWeight("bold");
