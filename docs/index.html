@@ -178,15 +178,16 @@
     <h2 style="margin:0" id="form-title">Lead details</h2>
     <span style="width:44px"></span>
   </div>
-  <div class="banner blue" id="form-extracting" style="display:none">
-    <div class="spin" style="display:inline-block;vertical-align:middle;margin-right:10px"></div>
-    Reading the badge photo…
+  <div class="banner blue" id="form-photonote" style="display:none">
+    🪪 Photo saved — name, title &amp; company are read automatically in the background.
   </div>
-  <div class="banner blue" id="form-offlinephoto" style="display:none">
-    📴 Offline — the photo is saved and contact details will be extracted automatically when you sync. You can also type them now.
+  <div class="card" id="form-photocard" style="display:none">
+    <img id="form-thumb" class="thumb" alt="badge photo">
+    <p class="sub center" style="margin-top:8px">
+      <a class="link" id="form-showfields" href="#">Type contact details myself</a>
+    </p>
   </div>
-  <div class="card">
-    <img id="form-thumb" class="thumb" style="display:none" alt="badge photo">
+  <div class="card" id="form-fieldscard">
     <div class="row2">
       <div><label>First name</label><input id="f-first" autocomplete="off"></div>
       <div><label>Last name</label><input id="f-last" autocomplete="off"></div>
@@ -268,6 +269,12 @@ const DB = {
   all() {
     return new Promise((res, rej) => {
       const q = DB.tx("readonly").getAll();
+      q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+    });
+  },
+  get(uuid) {
+    return new Promise((res, rej) => {
+      const q = DB.tx("readonly").get(uuid);
       q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
     });
   },
@@ -377,20 +384,22 @@ async function goHome() {
   $("home-sync").textContent = pending.length ? `Sync now (${pending.length})` : "Synced ✓";
   $("home-stale").style.display =
     pending.some(l => Date.now() - l.createdAt > 12 * 3600e3) ? "" : "none";
-  $("home-list").innerHTML = leads.slice(0, 30).map(l => {
+  $("home-list").innerHTML = leads.slice(0, 50).map(l => {
     const f = l.lead.fields || {};
-    const who = esc([f.first_name, f.last_name].filter(Boolean).join(" ")) || "<i>photo — pending extraction</i>";
-    return `<div class="leadrow">
-      <div><div class="who">${who}</div><div class="co">${esc(f.company || "")}</div></div>
+    const who = esc([f.first_name, f.last_name].filter(Boolean).join(" ")) ||
+      (l.photoBlob ? "<i>photo — reading in background</i>" : "<i>no name yet</i>");
+    return `<div class="leadrow" data-uuid="${l.uuid}">
+      <div><div class="who">${who} <span style="color:var(--muted);font-weight:400;font-size:13px">›</span></div><div class="co">${esc(f.company || "")}</div></div>
       <span class="pill ${l.status}">${l.status === "synced" ? "synced" : "pending"}</span>
     </div>`;
   }).join("") || `<p class="sub" style="padding:10px 0">No leads yet — go scan!</p>`;
+  document.querySelectorAll("#home-list .leadrow").forEach(el => el.onclick = () => editLead(el.dataset.uuid));
   show("scr-home");
 }
 $("home-settings").onclick = (e) => { e.preventDefault(); fillSetup(); show("scr-setup"); };
 $("home-scan").onclick = () => startScan();
-$("home-photo").onclick = () => $("photoInput").click();
-$("home-manual").onclick = () => openForm({});
+$("home-photo").onclick = () => { state.draft = null; $("photoInput").click(); };
+$("home-manual").onclick = () => openForm({ mode: "manual" });
 $("home-sync").onclick = () => syncQueue(true);
 
 // ---------------- QR scanning ----------------
@@ -427,8 +436,8 @@ function stopCamera() {
   if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
 }
 $("scan-back").onclick = () => goHome();
-$("scan-photo").onclick = () => { stopCamera(); $("photoInput").click(); };
-$("scan-manual").onclick = () => openForm({});
+$("scan-photo").onclick = () => { stopCamera(); state.draft = null; $("photoInput").click(); };
+$("scan-manual").onclick = () => openForm({ mode: "manual" });
 
 function onQrDecoded(raw) {
   stopCamera();
@@ -436,10 +445,10 @@ function onQrDecoded(raw) {
   const parsed = parseBadgePayload(raw);
   if (parsed) {
     toast("Badge QR read ✓");
-    openForm({ fields: parsed });
+    openForm({ fields: parsed, mode: "qr" });
   } else {
     toast("This QR has no contact info — snap a photo of the badge instead", 3500);
-    openForm({ badgeId: raw.slice(0, 120) });
+    state.draft = { badgeId: raw.slice(0, 120) };
     setTimeout(() => $("photoInput").click(), 400);
   }
 }
@@ -503,25 +512,11 @@ $("photoInput").addEventListener("change", async () => {
     return;
   }
 
-  const draft = state.draft && !state.draft.saved ? state.draft : {};
+  // Lead photo: no waiting — extraction happens server-side during sync.
+  const draft = state.draft || {};
   draft.photoBlob = blob;
+  draft.mode = "photo";
   openForm(draft);
-  $("form-thumb").src = URL.createObjectURL(blob);
-  $("form-thumb").style.display = "";
-  if (navigator.onLine && CONFIG.APPS_SCRIPT_URL) {
-    $("form-extracting").style.display = "";
-    try {
-      const b64 = await blobToBase64(blob);
-      const r = await api({ action: "extract", photoBase64: b64 });
-      if (r.ok) fillFields(r.fields);
-      else toast("Couldn't read the badge — type the details or retake");
-    } catch (e) {
-      $("form-offlinephoto").style.display = "";
-    }
-    $("form-extracting").style.display = "none";
-  } else {
-    $("form-offlinephoto").style.display = "";
-  }
 });
 
 function downscale(file) {
@@ -548,16 +543,48 @@ function blobToBase64(blob) {
 }
 
 // ---------------- details form ----------------
+// modes: "qr" (prefilled fields) | "photo" (photo + categorization only) |
+//        "manual" (empty fields) | "edit" (existing lead, everything shown)
 function openForm(draft) {
   state.draft = draft || {};
+  const mode = state.draft.mode || "manual";
   ["f-first","f-last","f-title","f-company","f-email","f-phone","f-note"].forEach(id => $(id).value = "");
   $("f-followup").value = "";
   setTemp("");
-  $("form-thumb").style.display = "none";
-  $("form-extracting").style.display = "none";
-  $("form-offlinephoto").style.display = "none";
-  if (draft.fields) fillFields(draft.fields);
+  $("form-title").textContent = mode === "edit" ? "Edit lead" : "Lead details";
+  $("form-save").textContent = mode === "edit" ? "Save changes" : "Save lead";
+  $("form-photonote").style.display = mode === "photo" ? "" : "none";
+  const hasPhoto = !!state.draft.photoBlob;
+  $("form-photocard").style.display = hasPhoto ? "" : "none";
+  if (hasPhoto) $("form-thumb").src = URL.createObjectURL(state.draft.photoBlob);
+  // photo capture: hide the contact fields — they're read in the background
+  $("form-fieldscard").style.display = mode === "photo" ? "none" : "";
+  $("form-showfields").parentElement.style.display = mode === "photo" ? "" : "none";
+  if (state.draft.fields) fillFields(state.draft.fields);
+  if (mode === "edit") {
+    setTemp(state.draft.temperature || "");
+    $("f-followup").value = state.draft.followUp || "";
+    $("f-note").value = state.draft.note || "";
+  }
   show("scr-form");
+}
+$("form-showfields").onclick = (e) => {
+  e.preventDefault();
+  $("form-fieldscard").style.display = "";
+  $("form-showfields").parentElement.style.display = "none";
+};
+
+async function editLead(uuid) {
+  const rec = await DB.get(uuid);
+  if (!rec) return;
+  openForm({
+    mode: "edit", editUuid: uuid,
+    fields: rec.lead.fields, photoBlob: rec.photoBlob,
+    temperature: rec.lead.temperature, followUp: rec.lead.followUp,
+    note: rec.lead.note, badgeId: rec.lead.badgeId,
+    linkedin: (rec.lead.fields || {}).linkedin, createdAt: rec.createdAt,
+    capturedAt: rec.lead.capturedAt,
+  });
 }
 function fillFields(f) {
   if (!f) return;
@@ -589,20 +616,21 @@ $("form-save").onclick = async () => {
   const hasIdentity = fields.first_name || fields.last_name || fields.email || state.draft.photoBlob;
   if (!hasIdentity) { toast("Add at least a name, email, or badge photo"); return; }
   const rec = {
-    uuid: crypto.randomUUID(),
-    status: "pending",
-    createdAt: Date.now(),
+    uuid: state.draft.editUuid || crypto.randomUUID(),
+    status: "pending", // edits re-queue and update the same sheet row (same uuid)
+    createdAt: state.draft.createdAt || Date.now(),
     photoBlob: state.draft.photoBlob || null,
     lead: {
       event: state.event, rep: state.rep, repEmail: state.repEmail, fields,
       temperature: tempSel, followUp: $("f-followup").value,
       note: $("f-note").value.trim(), badgeId: state.draft.badgeId || "",
-      capturedAt: new Date().toISOString(),
+      capturedAt: state.draft.capturedAt || new Date().toISOString(),
     },
   };
   await DB.put(rec);
-  state.draft = { saved: true };
-  toast("Lead saved ✓");
+  const wasEdit = !!state.draft.editUuid;
+  state.draft = null;
+  toast(wasEdit ? "Changes saved — syncing ✓" : "Lead saved ✓");
   goHome();
   syncQueue(false);
 };
@@ -625,8 +653,15 @@ async function syncQueue(manual) {
         const r = await api(body);
         if (r.ok) {
           rec.status = "synced";
-          rec.photoBlob = null; // free storage once acked
-          await DB.put(rec);
+          // server may have extracted contact details from the photo — pull them in
+          if (r.fields) {
+            const cur = rec.lead.fields || {};
+            for (const k of ["first_name","last_name","title","company","email","phone","linkedin"]) {
+              if (r.fields[k]) cur[k] = cur[k] || r.fields[k];
+            }
+            rec.lead.fields = cur;
+          }
+          await DB.put(rec); // keep photoBlob so the lead card can still show it
           sent++;
         } else { failed++; console.warn("submit rejected", r); }
       } catch (e) { failed++; break; } // network died — stop, retry later

@@ -3,6 +3,7 @@
  *
  * Deploy: Extensions → Apps Script → paste this file → Deploy → New deployment
  *   → Web app → Execute as: Me → Who has access: Anyone → copy the /exec URL.
+ * After edits: Deploy → Manage deployments → pencil → Version: New version → Deploy.
  *
  * Script Properties required (Project Settings → Script Properties):
  *   SHARED_SECRET      — must match CONFIG.SHARED_SECRET in the PWA's index.html
@@ -12,10 +13,13 @@
 var HEADERS = [
   "First Name", "Last Name", "Title", "Company", "Email", "Phone",
   "LinkedIn URL", "Event", "Captured By", "Captured At", "Source",
-  "Rep Note", "ICP Fit", "Why Relevant", "Push?", "HubSpot Status"
+  "Rep Note", "Temperature", "Follow-up", "ICP Fit", "Why Relevant",
+  "Push?", "HubSpot Status", "Badge Photo"
 ];
+var PUSH_COL = 17; // "Push?" checkbox column (Q)
 var RESERVED_TABS = ["TEMPLATE", "Config", "_sync"];
 var HAIKU_MODEL = "claude-haiku-4-5-20251001";
+var PHOTO_FOLDER = "Badge Scanner Photos";
 
 function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -102,7 +106,7 @@ function extractFromPhoto_(photoBase64) {
   };
 }
 
-// ---------- submit: write one lead row ----------
+// ---------- submit: create or update one lead row (upsert by uuid) ----------
 
 function handleSubmit_(req) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -115,42 +119,108 @@ function handleSubmit_(req) {
     return json_({ ok: false, error: "reserved tab name: " + eventName });
   }
 
-  // Offline-captured photo lead: extract fields now, before taking the lock.
   var fields = lead.fields || {};
-  if (req.photoBase64 && !fields.first_name && !fields.last_name) {
+  var photoUrl = "";
+
+  // New photo lead with no typed name: extract in the background (this call IS the
+  // background — the rep already saved and moved on). Keep this outside the lock.
+  var sync = ss.getSheetByName("_sync");
+  var existing = findUuid_(sync, req.uuid);
+  if (!existing && req.photoBase64 && !fields.first_name && !fields.last_name) {
     try {
-      fields = extractFromPhoto_(req.photoBase64);
+      var extracted = extractFromPhoto_(req.photoBase64);
+      fields.first_name = extracted.first_name; fields.last_name = extracted.last_name;
+      fields.title = extracted.title; fields.company = extracted.company;
+      fields.email = fields.email || extracted.email; fields.phone = fields.phone || extracted.phone;
+      if (!extracted.first_name && !extracted.last_name && !extracted.company) {
+        photoUrl = savePhotoToDrive_(req.uuid, req.photoBase64); // unreadable — keep the photo
+        fields.extractError = "nothing recognizable";
+      }
     } catch (err) {
-      fields.extractError = String(err); // still write the row; review gate catches it
+      photoUrl = savePhotoToDrive_(req.uuid, req.photoBase64);
+      fields.extractError = String(err);
     }
   }
 
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var sync = ss.getSheetByName("_sync");
-    if (isDuplicate_(sync, req.uuid)) {
-      return json_({ ok: true, duplicate: true });
+    existing = findUuid_(sync, req.uuid); // re-check under the lock
+    if (existing) {
+      return updateRow_(ss, existing, lead, fields);
     }
-    var ws = ensureEventTab_(ss, eventName); // auto-creates the tab on first lead
+    var ws = ensureEventTab_(ss, eventName);
+    migrateTab_(ws);
     var row = firstEmptyRow_(ws);
-    var note = composeRepNote_(lead, fields);
     ws.getRange(row, 1, 1, HEADERS.length).setValues([[
       fields.first_name || "", fields.last_name || "", fields.title || "",
       fields.company || "", fields.email || "", fields.phone || "",
       fields.linkedin || "", ws.getName(), lead.rep || "",
-      lead.capturedAt || new Date().toISOString(), "badge", note,
-      "", "", false, ""
+      lead.capturedAt || new Date().toISOString(), "badge",
+      composeRepNote_(lead, fields),
+      lead.temperature || "", lead.followUp || "",
+      "", "", false, "", photoUrl
     ]]);
     sync.appendRow([req.uuid, new Date().toISOString(), ws.getName(), row, lead.repEmail || ""]);
-    return json_({ ok: true, row: row, event: ws.getName() });
+    return json_({ ok: true, row: row, event: ws.getName(), fields: publicFields_(fields) });
   } finally {
     lock.releaseLock();
   }
 }
 
+// Later edits from the app update the same row. Non-empty incoming values win;
+// empty incoming values never blank out data already in the sheet. Review-owned
+// columns (ICP Fit, Why Relevant, Push?, HubSpot Status, Badge Photo) are untouched.
+function updateRow_(ss, existing, lead, fields) {
+  var ws = ss.getSheetByName(existing.tab);
+  if (!ws) return json_({ ok: false, error: "tab gone: " + existing.tab });
+  migrateTab_(ws);
+  var row = existing.row;
+  var cur = ws.getRange(row, 1, 1, HEADERS.length).getValues()[0];
+  var merged = {
+    first_name: fields.first_name || cur[0], last_name: fields.last_name || cur[1],
+    title: fields.title || cur[2], company: fields.company || cur[3],
+    email: fields.email || cur[4], phone: fields.phone || cur[5],
+    linkedin: fields.linkedin || cur[6]
+  };
+  ws.getRange(row, 1, 1, 7).setValues([[
+    merged.first_name, merged.last_name, merged.title,
+    merged.company, merged.email, merged.phone, merged.linkedin
+  ]]);
+  ws.getRange(row, 12, 1, 3).setValues([[
+    composeRepNote_(lead, fields), lead.temperature || cur[12], lead.followUp || cur[13]
+  ]]);
+  return json_({ ok: true, row: row, event: existing.tab, updated: true, fields: merged });
+}
+
+function composeRepNote_(lead, fields) {
+  var parts = [];
+  if (lead.note) parts.push(lead.note);
+  if (lead.badgeId) parts.push("badge-id:" + lead.badgeId);
+  if (fields.extractError) parts.push("(photo not readable — see Badge Photo column)");
+  return parts.join(" | ");
+}
+
+function publicFields_(fields) {
+  return {
+    first_name: fields.first_name || "", last_name: fields.last_name || "",
+    title: fields.title || "", company: fields.company || "",
+    email: fields.email || "", phone: fields.phone || "",
+    linkedin: fields.linkedin || ""
+  };
+}
+
+function savePhotoToDrive_(uuid, photoBase64) {
+  var it = DriveApp.getFoldersByName(PHOTO_FOLDER);
+  var folder = it.hasNext() ? it.next() : DriveApp.createFolder(PHOTO_FOLDER);
+  var blob = Utilities.newBlob(Utilities.base64Decode(photoBase64), "image/jpeg", uuid + ".jpg");
+  return folder.createFile(blob).getUrl();
+}
+
+// ---------- sheet plumbing ----------
+
 // Reuse an existing tab (case-insensitive match) or create one by copying
-// TEMPLATE so the Push? checkbox validation comes along. Callers must hold the lock.
+// TEMPLATE if present. Callers must hold the lock.
 function ensureEventTab_(ss, name) {
   var sheets = ss.getSheets();
   for (var i = 0; i < sheets.length; i++) {
@@ -165,34 +235,29 @@ function ensureEventTab_(ss, name) {
   }
   var fresh = ss.insertSheet(name);
   fresh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight("bold");
-  fresh.getRange(2, 15, 199, 1) // Push? checkbox column, rows 2-200 like setup_sheet.py
+  fresh.getRange(2, PUSH_COL, 199, 1) // Push? checkboxes, rows 2-200 like setup_sheet.py
     .setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
   fresh.setFrozenRows(1);
   return fresh;
 }
 
-// Sheets tab names: max 100 chars, no [ ] * / \ ? :
-function sanitizeEventName_(name) {
-  return String(name || "").replace(/[\[\]\*\/\\\?:]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+// Upgrade tabs from the original 16-column layout: insert Temperature/Follow-up
+// after Rep Note (existing checkbox validation shifts along automatically) and
+// add the Badge Photo column at the end. Safe to call repeatedly.
+function migrateTab_(ws) {
+  var head = ws.getRange(1, 1, 1, Math.max(ws.getLastColumn(), 1)).getValues()[0];
+  if (head[12] !== "Temperature") {
+    ws.insertColumnsAfter(12, 2);
+    ws.getRange(1, 13, 1, 2).setValues([["Temperature", "Follow-up"]]).setFontWeight("bold");
+    head = ws.getRange(1, 1, 1, ws.getLastColumn()).getValues()[0];
+  }
+  if (head[HEADERS.length - 1] !== "Badge Photo") {
+    ws.getRange(1, HEADERS.length).setValue("Badge Photo").setFontWeight("bold");
+  }
 }
 
-function composeRepNote_(lead, fields) {
-  var parts = [];
-  if (lead.temperature) parts.push("[" + String(lead.temperature).toUpperCase() + "]");
-  if (lead.followUp) parts.push("Next: " + lead.followUp);
-  var head = parts.join(" ");
-  var tail = [];
-  if (lead.note) tail.push(lead.note);
-  if (lead.badgeId) tail.push("badge-id:" + lead.badgeId);
-  if (fields.extractError) tail.push("(photo extraction failed — check photo manually)");
-  var body = tail.join(" | ");
-  if (head && body) return head + " — " + body;
-  return head || body;
-}
-
-// Never appendRow on event tabs: checkbox validation on O2:O200 makes appends
-// jump past the validated range (the row-2001 bug, see setup_sheet.py).
-// Scan all 16 columns for the first fully-empty row instead.
+// Never appendRow on event tabs: checkbox validation makes appends jump past
+// the validated range (the row-2001 bug, see setup_sheet.py).
 function firstEmptyRow_(ws) {
   var values = ws.getRange(2, 1, Math.max(ws.getLastRow(), 2), HEADERS.length).getValues();
   for (var i = 0; i < values.length; i++) {
@@ -202,14 +267,15 @@ function firstEmptyRow_(ws) {
   return values.length + 2;
 }
 
-function isDuplicate_(sync, uuid) {
+// _sync ledger: uuid | timestamp | event tab | row | rep email
+function findUuid_(sync, uuid) {
   var last = sync.getLastRow();
-  if (last < 1) return false;
-  var uuids = sync.getRange(1, 1, last, 1).getValues();
-  for (var i = 0; i < uuids.length; i++) {
-    if (uuids[i][0] === uuid) return true;
+  if (last < 1) return null;
+  var rows = sync.getRange(1, 1, last, 4).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i][0] === uuid) return { tab: String(rows[i][2]), row: Number(rows[i][3]) };
   }
-  return false;
+  return null;
 }
 
 function ensureInfraTabs_(ss) {
@@ -226,4 +292,8 @@ function ensureInfraTabs_(ss) {
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function sanitizeEventName_(name) {
+  return String(name || "").replace(/[\[\]\*\/\\\?:]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
 }
