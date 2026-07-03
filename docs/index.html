@@ -185,31 +185,39 @@
   <p class="sub" style="margin-top:12px">This app has no backend URL yet. Ask Matan — the Apps Script URL needs to be set in the app's CONFIG.</p>
 </div>
 
-<!-- ============ DAILY SETUP ============ -->
+<!-- ============ DAILY CHECK-IN ============ -->
 <div class="screen" id="scr-setup">
-  <div class="wordmark">Classiq</div>
-  <h1 style="margin-top:6px">Badge Scanner</h1>
-  <p class="sub" id="setup-sub">Quick check-in — once a day</p>
-  <div class="card" style="margin-top:18px">
-    <label for="setup-event">Event</label>
-    <input id="setup-event" list="event-list" placeholder="e.g. Q2B 2026" autocomplete="off">
-    <datalist id="event-list"></datalist>
-    <button class="secondary" id="setup-event-badge">📷 &nbsp;Read event name from a badge</button>
-    <p class="sub" style="margin-top:6px">A new name creates its own tab in the sheet automatically.</p>
+  <div style="flex:1; display:flex; flex-direction:column; justify-content:center; max-width:420px; width:100%; margin:0 auto">
+    <div class="wordmark center">Classiq</div>
+    <h1 class="center" style="margin-top:8px">Badge Scanner</h1>
+    <p class="sub center" id="setup-greet" style="margin-top:8px">Scan badges. Capture leads. Zero typing.</p>
 
-    <label>Who are you?</label>
-    <div id="rep-signedin" style="display:none; padding:10px 0 4px">
-      ✓ Signed in as <b id="rep-signedin-name"></b>
-      &nbsp;<a class="link" id="rep-signout" href="#">change</a>
+    <!-- step 1: sign in (shown only until identified — once, ever) -->
+    <div id="setup-auth" style="margin-top:34px">
+      <div id="gis-btn" style="display:flex; justify-content:center"></div>
+      <select id="setup-rep" style="display:none; margin-top:14px"></select>
+      <p class="sub center" style="margin-top:14px">
+        <a class="link" id="rep-fallback" href="#" style="font-size:13px; color:var(--dim)">Can't sign in? Pick your name from a list</a>
+      </p>
     </div>
-    <div id="gis-btn" style="margin-top:4px"></div>
-    <select id="setup-rep" style="display:none; margin-top:8px"></select>
-    <p class="sub"><a class="link" id="rep-fallback" href="#" style="font-size:13px">Can't sign in? Pick your name from a list</a></p>
 
-    <button class="primary" id="setup-save">Start scanning</button>
-    <p class="sub center" id="setup-status" style="margin-top:10px"></p>
+    <!-- step 2: event (the only daily decision) -->
+    <div id="setup-eventblock" style="display:none; margin-top:30px">
+      <label for="setup-event" style="margin-top:0">Which event are you at?</label>
+      <div style="position:relative">
+        <input id="setup-event" list="event-list" placeholder="Event name" autocomplete="off" style="padding-right:56px">
+        <datalist id="event-list"></datalist>
+        <button id="setup-event-badge" title="Read the event name off a badge"
+          style="position:absolute; right:6px; top:6px; bottom:6px; width:44px; border:none; border-radius:9px; background:rgba(215,247,91,.14); color:var(--lime); font-size:19px">📷</button>
+      </div>
+      <p class="sub" style="font-size:12px; margin-top:8px">Type it, pick a recent one, or tap 📷 to read it off any badge.</p>
+      <button class="primary" id="setup-save">Start scanning</button>
+      <p class="sub center" id="setup-status" style="margin-top:10px"></p>
+    </div>
   </div>
-  <p class="sub center"><a class="link" id="setup-reset" href="#" style="font-size:13px; color:var(--dim)">Clear all leads stored on this phone</a></p>
+  <p class="sub center" style="margin-top:20px">
+    <a class="link" id="setup-reset" href="#" style="font-size:12px; color:var(--dim)">Clear all leads stored on this phone</a>
+  </p>
 </div>
 
 <!-- ============ SCAN (default tab) ============ -->
@@ -475,26 +483,49 @@ async function refreshRemoteConfig() {
   } catch (e) { /* offline — cached config is fine */ }
 }
 
-// ---------------- daily setup ----------------
+// ---------------- daily check-in (progressive: identity once, then event) ----------------
 function fillSetup() {
   const urlEvent = new URLSearchParams(location.search).get("event");
   $("event-list").innerHTML = state.remote.events.map(e => `<option>${esc(e)}</option>`).join("");
   $("setup-rep").innerHTML = "<option value=''>— pick your name —</option>" +
     state.remote.reps.map(r => `<option>${esc(r)}</option>`).join("");
   $("setup-event").value = state.event || urlEvent || "";
-  renderRepIdentity();
+  renderSetup();
   $("setup-status").textContent = "";
 }
-function renderRepIdentity() {
-  const signedIn = !!state.rep && !!state.repEmail;
-  $("rep-signedin").style.display = signedIn ? "" : "none";
-  $("rep-signedin-name").textContent = state.rep;
-  $("gis-btn").style.display = signedIn || !CONFIG.GOOGLE_CLIENT_ID ? "none" : "";
-  $("rep-fallback").parentElement.style.display = signedIn || !CONFIG.GOOGLE_CLIENT_ID ? "none" : "";
-  $("setup-rep").style.display = !CONFIG.GOOGLE_CLIENT_ID && !signedIn ? "" : "none";
-  if (!signedIn && state.rep) $("setup-rep").value = state.rep;
+function renderSetup() {
+  const identified = !!state.rep;
+  $("setup-auth").style.display = identified ? "none" : "";
+  $("setup-eventblock").style.display = identified ? "" : "none";
+  if (identified) {
+    const h = new Date().getHours();
+    const part = h < 12 ? "morning" : h < 18 ? "afternoon" : "evening";
+    $("setup-greet").innerHTML =
+      `Good ${part}, <b style="color:var(--lime)">${esc(state.rep.split(" ")[0])}</b> 👋` +
+      ` &nbsp;<a class="link" id="rep-signout" href="#" style="font-size:12px; color:var(--dim)">not you?</a>`;
+    $("rep-signout").onclick = (e) => {
+      e.preventDefault();
+      state.rep = ""; state.repEmail = "";
+      localStorage.removeItem("bs_rep"); localStorage.removeItem("bs_rep_email");
+      renderSetup();
+    };
+  } else {
+    $("setup-greet").textContent = "Scan badges. Capture leads. Zero typing.";
+    // no OAuth configured → the name list IS the sign-in
+    if (!CONFIG.GOOGLE_CLIENT_ID) {
+      $("setup-rep").style.display = "";
+      $("rep-fallback").parentElement.style.display = "none";
+    }
+  }
 }
 $("rep-fallback").onclick = (e) => { e.preventDefault(); $("setup-rep").style.display = ""; };
+$("setup-rep").onchange = () => {
+  const v = $("setup-rep").value;
+  if (!v) return;
+  state.rep = v; state.repEmail = "";
+  localStorage.setItem("bs_rep", v);
+  renderSetup();
+};
 $("setup-reset").onclick = async (e) => {
   e.preventDefault();
   if (!confirm("Remove ALL leads stored on this phone? Anything already synced stays in the spreadsheet.")) return;
@@ -511,18 +542,12 @@ $("form-delete").onclick = async () => {
   toast("Removed from this phone ✓");
   go("leads");
 };
-$("rep-signout").onclick = (e) => {
-  e.preventDefault();
-  state.rep = ""; state.repEmail = "";
-  localStorage.removeItem("bs_rep"); localStorage.removeItem("bs_rep_email");
-  renderRepIdentity();
-};
 $("setup-event-badge").onclick = () => { state.photoTarget = "event"; $("photoInput").click(); };
 $("setup-save").onclick = () => {
   let ev = $("setup-event").value.trim().replace(/[\[\]\*\/\\\?:]/g, " ").replace(/\s+/g, " ");
-  const rp = state.repEmail ? state.rep : $("setup-rep").value;
-  if (!ev) { toast("Enter the event name (or read it from a badge)"); return; }
-  if (!rp) { toast(CONFIG.GOOGLE_CLIENT_ID ? "Sign in with your Classiq Google account" : "Pick your name"); return; }
+  const rp = state.rep;
+  if (!rp) { toast(CONFIG.GOOGLE_CLIENT_ID ? "Sign in with your Classiq Google account" : "Pick your name"); renderSetup(); return; }
+  if (!ev) { toast("Enter the event name (or tap 📷 to read it off a badge)"); $("setup-event").focus(); return; }
   // typo protection: snap to an existing event ("QB2 tokyo" → "Q2B Tokyo")
   const match = state.remote.events.find(e => sameEvent(e, ev));
   if (match && match !== ev) { ev = match; toast("Matched to existing event: " + match); }
@@ -551,7 +576,7 @@ function onGoogleCredential(resp) {
   state.repEmail = p.email;
   localStorage.setItem("bs_rep", state.rep);
   localStorage.setItem("bs_rep_email", state.repEmail);
-  renderRepIdentity();
+  renderSetup();
   toast("Signed in as " + state.rep + " ✓");
 }
 
