@@ -109,9 +109,20 @@
   <p class="sub">One-time setup for this phone</p>
   <div class="card" style="margin-top:18px">
     <label for="setup-event">Event</label>
-    <select id="setup-event"></select>
-    <label for="setup-rep">Your name</label>
-    <select id="setup-rep"></select>
+    <input id="setup-event" list="event-list" placeholder="e.g. Q2B 2026" autocomplete="off">
+    <datalist id="event-list"></datalist>
+    <button class="secondary" id="setup-event-badge">📷 &nbsp;Read event name from a badge</button>
+    <p class="sub" style="margin-top:6px">A new name creates its own tab in the sheet automatically.</p>
+
+    <label>Who are you?</label>
+    <div id="rep-signedin" style="display:none; padding:10px 0 4px">
+      ✓ Signed in as <b id="rep-signedin-name"></b>
+      &nbsp;<a class="link" id="rep-signout" href="#">change</a>
+    </div>
+    <div id="gis-btn" style="margin-top:4px"></div>
+    <select id="setup-rep" style="display:none; margin-top:8px"></select>
+    <p class="sub"><a class="link" id="rep-fallback" href="#" style="font-size:13px">Can't sign in? Pick your name from a list</a></p>
+
     <button class="primary" id="setup-save">Start scanning</button>
     <p class="sub center" id="setup-status" style="margin-top:10px"></p>
   </div>
@@ -210,13 +221,16 @@
 <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none">
 
 <script src="jsqr.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer onload="window._gisLoaded && window._gisLoaded()"></script>
 <script>
 "use strict";
 
 // ======================= CONFIG =======================
 const CONFIG = {
-  APPS_SCRIPT_URL: "", // paste the Apps Script /exec URL here
+  APPS_SCRIPT_URL: "",    // paste the Apps Script /exec URL here
   SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
+  GOOGLE_CLIENT_ID: "",   // OAuth client ID for "Sign in with Google" (see SETUP.md); empty = name dropdown only
+  ALLOWED_DOMAIN: "classiq.io",
 };
 // ======================================================
 
@@ -224,8 +238,10 @@ const $ = (id) => document.getElementById(id);
 const state = {
   event: localStorage.getItem("bs_event") || "",
   rep: localStorage.getItem("bs_rep") || "",
+  repEmail: localStorage.getItem("bs_rep_email") || "",
   remote: JSON.parse(localStorage.getItem("bs_remote") || '{"events":[],"reps":[]}'),
   draft: null,        // lead being edited in the form
+  photoTarget: "lead", // "lead" | "event" (setup-screen event detection)
   stream: null,
   scanTimer: null,
   syncing: false,
@@ -295,22 +311,62 @@ async function refreshRemoteConfig() {
 // ---------------- setup screen ----------------
 function fillSetup() {
   const urlEvent = new URLSearchParams(location.search).get("event");
-  const ev = $("setup-event"), rp = $("setup-rep");
-  ev.innerHTML = state.remote.events.map(e => `<option>${esc(e)}</option>`).join("") || "<option value=''>— no events yet —</option>";
-  rp.innerHTML = state.remote.reps.map(r => `<option>${esc(r)}</option>`).join("") || "<option value=''>— no reps yet —</option>";
-  if (urlEvent && state.remote.events.includes(urlEvent)) ev.value = urlEvent;
-  if (state.event) ev.value = state.event;
-  if (state.rep) rp.value = state.rep;
-  $("setup-status").textContent = state.remote.events.length ? "" : "Loading events… (needs internet on first run)";
+  $("event-list").innerHTML = state.remote.events.map(e => `<option>${esc(e)}</option>`).join("");
+  $("setup-rep").innerHTML = "<option value=''>— pick your name —</option>" +
+    state.remote.reps.map(r => `<option>${esc(r)}</option>`).join("");
+  $("setup-event").value = state.event || urlEvent || "";
+  renderRepIdentity();
+  $("setup-status").textContent = "";
 }
+function renderRepIdentity() {
+  const signedIn = !!state.rep && !!state.repEmail;
+  $("rep-signedin").style.display = signedIn ? "" : "none";
+  $("rep-signedin-name").textContent = state.rep;
+  $("gis-btn").style.display = signedIn || !CONFIG.GOOGLE_CLIENT_ID ? "none" : "";
+  $("rep-fallback").parentElement.style.display = signedIn || !CONFIG.GOOGLE_CLIENT_ID ? "none" : "";
+  $("setup-rep").style.display = !CONFIG.GOOGLE_CLIENT_ID && !signedIn ? "" : "none";
+  if (!signedIn && state.rep) $("setup-rep").value = state.rep;
+}
+$("rep-fallback").onclick = (e) => { e.preventDefault(); $("setup-rep").style.display = ""; };
+$("rep-signout").onclick = (e) => {
+  e.preventDefault();
+  state.rep = ""; state.repEmail = "";
+  localStorage.removeItem("bs_rep"); localStorage.removeItem("bs_rep_email");
+  renderRepIdentity();
+};
+$("setup-event-badge").onclick = () => { state.photoTarget = "event"; $("photoInput").click(); };
 $("setup-save").onclick = () => {
-  const ev = $("setup-event").value, rp = $("setup-rep").value;
-  if (!ev || !rp) { toast("Pick an event and your name"); return; }
+  const ev = $("setup-event").value.trim().replace(/[\[\]\*\/\\\?:]/g, " ").replace(/\s+/g, " ");
+  const rp = state.repEmail ? state.rep : $("setup-rep").value;
+  if (!ev) { toast("Enter the event name (or read it from a badge)"); return; }
+  if (!rp) { toast(CONFIG.GOOGLE_CLIENT_ID ? "Sign in with your Classiq Google account" : "Pick your name"); return; }
   state.event = ev; state.rep = rp;
   localStorage.setItem("bs_event", ev);
   localStorage.setItem("bs_rep", rp);
   goHome();
 };
+
+// ---------------- Google sign-in (rep identity) ----------------
+window._gisLoaded = () => {
+  if (!CONFIG.GOOGLE_CLIENT_ID || !window.google) return;
+  google.accounts.id.initialize({ client_id: CONFIG.GOOGLE_CLIENT_ID, callback: onGoogleCredential });
+  google.accounts.id.renderButton($("gis-btn"), { theme: "filled_blue", size: "large", shape: "pill", width: 280 });
+};
+function onGoogleCredential(resp) {
+  let p;
+  try {
+    p = JSON.parse(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+  } catch (e) { toast("Sign-in failed — try again"); return; }
+  if (!p.email || !p.email.toLowerCase().endsWith("@" + CONFIG.ALLOWED_DOMAIN)) {
+    toast("Please sign in with your @" + CONFIG.ALLOWED_DOMAIN + " account"); return;
+  }
+  state.rep = p.name || p.email.split("@")[0];
+  state.repEmail = p.email;
+  localStorage.setItem("bs_rep", state.rep);
+  localStorage.setItem("bs_rep_email", state.repEmail);
+  renderRepIdentity();
+  toast("Signed in as " + state.rep + " ✓");
+}
 
 // ---------------- home screen ----------------
 async function goHome() {
@@ -428,6 +484,25 @@ $("photoInput").addEventListener("change", async () => {
   $("photoInput").value = "";
   if (!file) return;
   const blob = await downscale(file);
+
+  // Setup screen: photo is only used to detect the event name
+  if (state.photoTarget === "event") {
+    state.photoTarget = "lead";
+    if (!navigator.onLine) { toast("Need internet to read the badge — type the event name instead"); return; }
+    $("setup-status").textContent = "Reading the badge…";
+    try {
+      const r = await api({ action: "extract", photoBase64: await blobToBase64(blob) });
+      if (r.ok && r.fields.event_name) {
+        $("setup-event").value = r.fields.event_name;
+        toast("Event: " + r.fields.event_name + " ✓");
+      } else {
+        toast("Couldn't find an event name on that badge — type it instead");
+      }
+    } catch (e) { toast("Couldn't reach the server — type the event name instead"); }
+    $("setup-status").textContent = "";
+    return;
+  }
+
   const draft = state.draft && !state.draft.saved ? state.draft : {};
   draft.photoBlob = blob;
   openForm(draft);
@@ -519,7 +594,7 @@ $("form-save").onclick = async () => {
     createdAt: Date.now(),
     photoBlob: state.draft.photoBlob || null,
     lead: {
-      event: state.event, rep: state.rep, fields,
+      event: state.event, rep: state.rep, repEmail: state.repEmail, fields,
       temperature: tempSel, followUp: $("f-followup").value,
       note: $("f-note").value.trim(), badgeId: state.draft.badgeId || "",
       capturedAt: new Date().toISOString(),
@@ -568,6 +643,7 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<"
 (async function boot() {
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
   if (!CONFIG.APPS_SCRIPT_URL) { show("scr-noconfig"); return; }
+  if (window.google) window._gisLoaded(); // gsi script may have loaded before this one
   await DB.open();
   refreshRemoteConfig().then(() => {
     if ($("scr-setup").classList.contains("active")) fillSetup();

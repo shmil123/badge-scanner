@@ -69,11 +69,13 @@ function extractFromPhoto_(photoBase64) {
         { type: "image", source: { type: "base64", media_type: "image/jpeg", data: photoBase64 } },
         {
           type: "text",
-          text: "This is a photo of a conference attendee badge. Extract the attendee's details. " +
+          text: "This is a photo of a conference attendee badge. Extract the attendee's details " +
+            "and the event/conference name printed on the badge. " +
             "Respond with ONLY a JSON object, no other text: " +
-            '{"first_name":"","last_name":"","title":"","company":"","email":"","phone":""}. ' +
-            "Use empty string for anything not visible. The largest text is usually the name; " +
-            "company logos/names and job titles are usually below it. Ignore the event name and sponsor logos."
+            '{"first_name":"","last_name":"","title":"","company":"","email":"","phone":"","event_name":""}. ' +
+            "Use empty string for anything not visible. The largest text is usually the attendee name; " +
+            "company names and job titles are usually below it. The event name is usually in the badge " +
+            "header/footer or lanyard area (e.g. \"Q2B 2026\", \"Quantum.Tech World\"). Ignore sponsor logos."
         }
       ]
     }]
@@ -95,7 +97,8 @@ function extractFromPhoto_(photoBase64) {
   return {
     first_name: f.first_name || "", last_name: f.last_name || "",
     title: f.title || "", company: f.company || "",
-    email: f.email || "", phone: f.phone || ""
+    email: f.email || "", phone: f.phone || "",
+    event_name: f.event_name || ""
   };
 }
 
@@ -106,11 +109,10 @@ function handleSubmit_(req) {
   ensureInfraTabs_(ss);
   var lead = req.lead || {};
   if (!req.uuid) return json_({ ok: false, error: "missing uuid" });
-  if (!lead.event) return json_({ ok: false, error: "missing event" });
-
-  var ws = ss.getSheetByName(lead.event);
-  if (!ws || RESERVED_TABS.indexOf(lead.event) !== -1) {
-    return json_({ ok: false, error: "unknown event tab: " + lead.event });
+  var eventName = sanitizeEventName_(lead.event);
+  if (!eventName) return json_({ ok: false, error: "missing event" });
+  if (RESERVED_TABS.some(function (t) { return t.toLowerCase() === eventName.toLowerCase(); })) {
+    return json_({ ok: false, error: "reserved tab name: " + eventName });
   }
 
   // Offline-captured photo lead: extract fields now, before taking the lock.
@@ -130,20 +132,48 @@ function handleSubmit_(req) {
     if (isDuplicate_(sync, req.uuid)) {
       return json_({ ok: true, duplicate: true });
     }
+    var ws = ensureEventTab_(ss, eventName); // auto-creates the tab on first lead
     var row = firstEmptyRow_(ws);
     var note = composeRepNote_(lead, fields);
     ws.getRange(row, 1, 1, HEADERS.length).setValues([[
       fields.first_name || "", fields.last_name || "", fields.title || "",
       fields.company || "", fields.email || "", fields.phone || "",
-      fields.linkedin || "", lead.event, lead.rep || "",
+      fields.linkedin || "", ws.getName(), lead.rep || "",
       lead.capturedAt || new Date().toISOString(), "badge", note,
       "", "", false, ""
     ]]);
-    sync.appendRow([req.uuid, new Date().toISOString(), lead.event, row]);
-    return json_({ ok: true, row: row });
+    sync.appendRow([req.uuid, new Date().toISOString(), ws.getName(), row, lead.repEmail || ""]);
+    return json_({ ok: true, row: row, event: ws.getName() });
   } finally {
     lock.releaseLock();
   }
+}
+
+// Reuse an existing tab (case-insensitive match) or create one by copying
+// TEMPLATE so the Push? checkbox validation comes along. Callers must hold the lock.
+function ensureEventTab_(ss, name) {
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].getName().toLowerCase() === name.toLowerCase()) return sheets[i];
+  }
+  var tpl = ss.getSheetByName("TEMPLATE");
+  if (tpl) {
+    var ws = tpl.copyTo(ss);
+    ws.setName(name);
+    ws.showSheet();
+    return ws;
+  }
+  var fresh = ss.insertSheet(name);
+  fresh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight("bold");
+  fresh.getRange(2, 15, 199, 1) // Push? checkbox column, rows 2-200 like setup_sheet.py
+    .setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+  fresh.setFrozenRows(1);
+  return fresh;
+}
+
+// Sheets tab names: max 100 chars, no [ ] * / \ ? :
+function sanitizeEventName_(name) {
+  return String(name || "").replace(/[\[\]\*\/\\\?:]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
 function composeRepNote_(lead, fields) {

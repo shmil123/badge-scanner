@@ -24,23 +24,22 @@ Rep's phone (PWA on GitHub Pages)     Apps Script Web App (bound to sheet)     E
 
 ## One-time setup (Matan)
 
-1. **Anthropic API key**: console.anthropic.com → API keys → create one (Haiku-only spend, cents per event).
-2. **Apps Script**: open the Event Leads sheet → Extensions → Apps Script → paste `apps-script/Code.gs`
-   → ⚙ Project Settings → Script Properties → add:
-   - `SHARED_SECRET` = the value of `CONFIG.SHARED_SECRET` in `webapp/index.html`
-   - `ANTHROPIC_API_KEY` = your key
-   → Deploy → New deployment → Web app → *Execute as: Me* / *Who has access: **Anyone*** → authorize → copy the `/exec` URL.
-   - If Workspace blocks "Anyone" access: deploy from a personal Gmail account that has edit access to the sheet.
-3. Paste the `/exec` URL into `CONFIG.APPS_SCRIPT_URL` in `webapp/index.html`, bump `CACHE_VERSION` in `sw.js`, push.
-4. **Config tab** (auto-created on first request): add each rep's display name in column A —
-   names must match `event-leads/rep_map.json` keys so HubSpot owner assignment works at push time.
+See **[SETUP.md](SETUP.md)** for exact click-by-click steps: Anthropic API key, Apps Script
+deployment + Script Properties, Google OAuth client ID (rep sign-in), GitHub Pages hosting.
+
+**Rep identity**: reps sign in once with their @classiq.io Google account; their Google name
+becomes Captured By (→ HubSpot owner at push time via `event-leads/rep_map.json` — keep names
+in sync). If `CONFIG.GOOGLE_CLIENT_ID` is empty or sign-in fails, the app falls back to a name
+dropdown fed from the sheet's `Config` tab.
 
 ## Per event
 
-1. In the sheet: duplicate the `TEMPLATE` tab → rename to the event name.
+1. Nothing to pre-create — the event tab is auto-created (copy of `TEMPLATE`, so the Push?
+   checkboxes come along) when the first lead arrives. Reps type the event name on first run or
+   read it off a badge with the 📷 button; the `?event=` URL param pre-fills it.
 2. Print a booth poster QR pointing to `https://<pages-url>/?event=<Event%20Name>` — reps scan it,
-   pick their name once, done. Tell them to open it **while on WiFi once** so the app caches for offline.
-3. Add any new reps to the `Config` tab and `rep_map.json`.
+   sign in once, done. Tell them to open it **while on WiFi once** so the app caches for offline.
+3. New reps: make sure their Google display name exists in `rep_map.json` for owner assignment.
 
 ## Rules for reps
 
