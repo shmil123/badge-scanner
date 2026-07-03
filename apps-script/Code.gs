@@ -297,3 +297,7 @@ function json_(obj) {
 function sanitizeEventName_(name) {
   return String(name || "").replace(/[\[\]\*\/\\\?:]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
 }
+
+// Run this once from the editor (▶) to trigger the Drive permission prompt —
+// underscore-suffixed functions are hidden from the Run menu, this one isn't.
+function authorizeDrive() { DriveApp.getRootFolder(); }
