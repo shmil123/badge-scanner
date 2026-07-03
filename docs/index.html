@@ -209,6 +209,7 @@
     <button class="primary" id="setup-save">Start scanning</button>
     <p class="sub center" id="setup-status" style="margin-top:10px"></p>
   </div>
+  <p class="sub center"><a class="link" id="setup-reset" href="#" style="font-size:13px; color:var(--dim)">Clear all leads stored on this phone</a></p>
 </div>
 
 <!-- ============ SCAN (default tab) ============ -->
@@ -328,6 +329,7 @@
     <textarea id="f-note" placeholder="What did they ask about? What's next?"></textarea>
   </div>
   <button class="primary" id="form-save">Save lead</button>
+  <button class="secondary" id="form-delete" style="display:none; border-color:rgba(244,55,100,.4); color:#ff7d9c">Remove from this phone</button>
 </div>
 
 <nav id="bottomnav">
@@ -414,6 +416,18 @@ const DB = {
       q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
     });
   },
+  del(uuid) {
+    return new Promise((res, rej) => {
+      const q = DB.tx("readwrite").delete(uuid);
+      q.onsuccess = res; q.onerror = () => rej(q.error);
+    });
+  },
+  clear() {
+    return new Promise((res, rej) => {
+      const q = DB.tx("readwrite").clear();
+      q.onsuccess = res; q.onerror = () => rej(q.error);
+    });
+  },
 };
 
 // ---------------- screens / nav ----------------
@@ -481,6 +495,22 @@ function renderRepIdentity() {
   if (!signedIn && state.rep) $("setup-rep").value = state.rep;
 }
 $("rep-fallback").onclick = (e) => { e.preventDefault(); $("setup-rep").style.display = ""; };
+$("setup-reset").onclick = async (e) => {
+  e.preventDefault();
+  if (!confirm("Remove ALL leads stored on this phone? Anything already synced stays in the spreadsheet.")) return;
+  await DB.clear();
+  localStorage.removeItem("bs_history");
+  state.history = null;
+  toast("Phone data cleared ✓");
+};
+$("form-delete").onclick = async () => {
+  if (!state.draft || !state.draft.editUuid) return;
+  if (!confirm("Remove this lead from the phone? If it was synced, it stays in the spreadsheet.")) return;
+  await DB.del(state.draft.editUuid);
+  state.draft = null;
+  toast("Removed from this phone ✓");
+  go("leads");
+};
 $("rep-signout").onclick = (e) => {
   e.preventDefault();
   state.rep = ""; state.repEmail = "";
@@ -701,6 +731,7 @@ function openForm(draft) {
   $("form-title").textContent = mode === "edit" ? "Edit lead" : "New lead";
   $("form-save").textContent = mode === "edit" ? "Save changes" : "Save lead";
   $("form-photonote").style.display = mode === "photo" ? "" : "none";
+  $("form-delete").style.display = mode === "edit" ? "" : "none";
   const hasPhoto = !!state.draft.photoBlob;
   $("form-photocard").style.display = hasPhoto ? "" : "none";
   if (hasPhoto) $("form-thumb").src = URL.createObjectURL(state.draft.photoBlob);

@@ -176,7 +176,10 @@ function handleSubmit_(req) {
   try {
     existing = findUuid_(sync, req.uuid); // re-check under the lock
     if (existing) {
-      return updateRow_(ss, existing, lead, fields);
+      var updated = updateRow_(ss, existing, lead, fields);
+      if (updated) return updated;
+      // Row was deleted or shifted (manual sheet cleanup) — fall through and
+      // write the lead as a fresh row instead of overwriting a stranger's row.
     }
     var ws = ensureEventTab_(ss, eventName);
     migrateTab_(ws);
@@ -190,7 +193,7 @@ function handleSubmit_(req) {
       lead.temperature || "", lead.followUp || "",
       false, "", photoUrl
     ]]);
-    sync.appendRow([req.uuid, new Date().toISOString(), ws.getName(), row, lead.repEmail || ""]);
+    upsertLedger_(sync, req.uuid, ws.getName(), row, lead.repEmail || "");
     return json_({ ok: true, row: row, event: ws.getName(), fields: publicFields_(fields) });
   } finally {
     lock.releaseLock();
@@ -200,12 +203,16 @@ function handleSubmit_(req) {
 // Later edits from the app update the same row. Non-empty incoming values win;
 // empty incoming values never blank out data already in the sheet. Review-owned
 // columns (Push?, HubSpot Status, Badge Photo) are untouched.
+// Returns null when the ledger row no longer holds this lead (deleted/shifted
+// by manual sheet cleanup) so the caller recreates it instead.
 function updateRow_(ss, existing, lead, fields) {
   var ws = ss.getSheetByName(existing.tab);
-  if (!ws) return json_({ ok: false, error: "tab gone: " + existing.tab });
+  if (!ws) return null;
   migrateTab_(ws);
   var row = existing.row;
   var cur = ws.getRange(row, 1, 1, HEADERS.length).getValues()[0];
+  var rowEmpty = cur.every(function (c) { return c === "" || c === false; });
+  if (rowEmpty || !sameCapture_(cur[9], lead.capturedAt)) return null;
   var merged = {
     first_name: fields.first_name || cur[0], last_name: fields.last_name || cur[1],
     title: fields.title || cur[2], company: fields.company || cur[3],
@@ -220,6 +227,32 @@ function updateRow_(ss, existing, lead, fields) {
     composeRepNote_(lead, fields), lead.temperature || cur[12], lead.followUp || cur[13]
   ]]);
   return json_({ ok: true, row: row, event: existing.tab, updated: true, fields: merged });
+}
+
+// Identity check for updates: the row's Captured At must match the lead's.
+// Sheets may auto-parse ISO strings into Dates, so compare as timestamps with
+// a small tolerance; fall back to string equality; unknown → not the same row.
+function sameCapture_(cellValue, capturedAt) {
+  if (!capturedAt) return false;
+  if (String(cellValue) === String(capturedAt)) return true;
+  var a = new Date(cellValue).getTime(), b = new Date(capturedAt).getTime();
+  if (isNaN(a) || isNaN(b)) return false;
+  return Math.abs(a - b) < 5000;
+}
+
+// Keep one ledger row per uuid: update the existing entry's tab/row if present.
+function upsertLedger_(sync, uuid, tab, row, repEmail) {
+  var last = sync.getLastRow();
+  if (last > 0) {
+    var uuids = sync.getRange(1, 1, last, 1).getValues();
+    for (var i = 0; i < uuids.length; i++) {
+      if (uuids[i][0] === uuid) {
+        sync.getRange(i + 1, 2, 1, 3).setValues([[new Date().toISOString(), tab, row]]);
+        return;
+      }
+    }
+  }
+  sync.appendRow([uuid, new Date().toISOString(), tab, row, repEmail]);
 }
 
 function composeRepNote_(lead, fields) {
