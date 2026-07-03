@@ -389,7 +389,7 @@ const CONFIG = {
   SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
   GOOGLE_CLIENT_ID: "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googleusercontent.com",
   ALLOWED_DOMAIN: "classiq.io",
-  APP_VERSION: "v11", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v12", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -1049,7 +1049,16 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<"
 
 (async function boot() {
   $("ver").textContent = CONFIG.APP_VERSION;
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  if ("serviceWorker" in navigator) {
+    // check for a new version on every open, and reload once when it takes over
+    navigator.serviceWorker.register("sw.js").then(reg => reg.update()).catch(() => {});
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
+  }
   if (!CONFIG.APPS_SCRIPT_URL) { show("scr-noconfig"); return; }
   if (window.google) window._gisLoaded(); // gsi script may have loaded before this one
   await DB.open();
