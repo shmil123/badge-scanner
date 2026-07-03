@@ -367,6 +367,7 @@
 
 <div id="toast"></div>
 <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none">
+<input type="file" id="galleryInput" accept="image/*" multiple style="display:none">
 
 <script src="jsqr.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer onload="window._gisLoaded && window._gisLoaded()"></script>
@@ -650,7 +651,7 @@ function stopCamera() {
 $("cam-start").onclick = () => startCamera(true);
 $("scan-settings").onclick = (e) => { e.preventDefault(); fillSetup(); show("scr-setup"); };
 $("scan-manual").onclick = (e) => { e.preventDefault(); openForm({ mode: "manual" }); };
-$("scan-upload").onclick = (e) => { e.preventDefault(); state.photoTarget = "lead"; $("photoInput").click(); };
+$("scan-upload").onclick = (e) => { e.preventDefault(); stopCamera(); $("galleryInput").click(); };
 
 function onQrDecoded(raw) {
   const parsed = parseBadgePayload(raw);
@@ -746,6 +747,35 @@ $("photoInput").addEventListener("change", async () => {
   openForm({ photoBlob: blob, mode: "photo" });
 });
 
+// Gallery upload (mobile): 1 photo → normal form; many photos → one lead per
+// image, details extracted server-side during sync, notes addable from Leads.
+$("galleryInput").addEventListener("change", async () => {
+  const files = [...$("galleryInput").files];
+  $("galleryInput").value = "";
+  if (!files.length) return;
+  if (files.length === 1) {
+    openForm({ photoBlob: await downscale(files[0]), mode: "photo" });
+    return;
+  }
+  if (!confirm(`Create ${files.length} leads — one per photo? Contact details are read automatically; you can add notes from the Leads tab.`)) return;
+  toast(`Saving ${files.length} badge photos…`, 5000);
+  for (const f of files) {
+    const blob = await downscale(f);
+    await DB.put({
+      uuid: crypto.randomUUID(), status: "pending", createdAt: Date.now(),
+      photoBlob: blob,
+      lead: {
+        event: state.event, rep: state.rep, repEmail: state.repEmail,
+        fields: {}, temperature: "", followUp: "", note: "", badgeId: "",
+        capturedAt: new Date().toISOString(),
+      },
+    });
+  }
+  toast(`${files.length} leads created ✓ — syncing in the background`);
+  go("leads");
+  syncQueue(false);
+});
+
 function downscale(file) {
   return new Promise((res) => {
     const img = new Image();
@@ -756,8 +786,9 @@ function downscale(file) {
       c.width = Math.round(img.width * s);
       c.height = Math.round(img.height * s);
       c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-      c.toBlob(b => res(b), "image/jpeg", 0.7);
+      c.toBlob(b => res(b || file), "image/jpeg", 0.7);
     };
+    img.onerror = () => res(file); // undecodable format — keep the original blob
     img.src = URL.createObjectURL(file);
   });
 }
