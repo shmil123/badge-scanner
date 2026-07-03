@@ -489,10 +489,13 @@ $("rep-signout").onclick = (e) => {
 };
 $("setup-event-badge").onclick = () => { state.photoTarget = "event"; $("photoInput").click(); };
 $("setup-save").onclick = () => {
-  const ev = $("setup-event").value.trim().replace(/[\[\]\*\/\\\?:]/g, " ").replace(/\s+/g, " ");
+  let ev = $("setup-event").value.trim().replace(/[\[\]\*\/\\\?:]/g, " ").replace(/\s+/g, " ");
   const rp = state.repEmail ? state.rep : $("setup-rep").value;
   if (!ev) { toast("Enter the event name (or read it from a badge)"); return; }
   if (!rp) { toast(CONFIG.GOOGLE_CLIENT_ID ? "Sign in with your Classiq Google account" : "Pick your name"); return; }
+  // typo protection: snap to an existing event ("QB2 tokyo" → "Q2B Tokyo")
+  const match = state.remote.events.find(e => sameEvent(e, ev));
+  if (match && match !== ev) { ev = match; toast("Matched to existing event: " + match); }
   state.event = ev; state.rep = rp;
   localStorage.setItem("bs_event", ev);
   localStorage.setItem("bs_rep", rp);
@@ -887,6 +890,25 @@ async function syncQueue(manual) {
   if (state.tab === "leads" && $("scr-leads").classList.contains("active")) renderLeads();
 }
 window.addEventListener("online", () => syncQueue(false));
+
+// ---------------- fuzzy event matching (mirror of the backend's sameEvent_) ----------------
+function sameEvent(a, b) {
+  const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const na = norm(a), nb = norm(b);
+  if (na === nb) return true;
+  if (na.replace(/[^0-9]/g, "") !== nb.replace(/[^0-9]/g, "")) return false; // digits differ = different event
+  if (Math.min(na.length, nb.length) < 5) return false;
+  if (Math.abs(na.length - nb.length) > 2) return false;
+  let prev = Array.from({ length: nb.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= na.length; i++) {
+    const cur = [i];
+    for (let k = 1; k <= nb.length; k++) {
+      cur[k] = Math.min(prev[k] + 1, cur[k - 1] + 1, prev[k - 1] + (na[i - 1] === nb[k - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[nb.length] <= 2;
+}
 
 // ---------------- boot ----------------
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }

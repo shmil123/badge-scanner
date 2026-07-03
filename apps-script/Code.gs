@@ -248,12 +248,14 @@ function savePhotoToDrive_(uuid, photoBase64) {
 
 // ---------- sheet plumbing ----------
 
-// Reuse an existing tab (case-insensitive match) or create one by copying
-// TEMPLATE if present. Callers must hold the lock.
+// Reuse an existing tab — exact, case-insensitive, or fuzzy ("QB2 Tokyo" and
+// "q2b tokyo" both map to "Q2B Tokyo") — or create one by copying TEMPLATE if
+// present. Callers must hold the lock.
 function ensureEventTab_(ss, name) {
   var sheets = ss.getSheets();
   for (var i = 0; i < sheets.length; i++) {
-    if (sheets[i].getName().toLowerCase() === name.toLowerCase()) return sheets[i];
+    if (RESERVED_TABS.indexOf(sheets[i].getName()) !== -1) continue;
+    if (sameEvent_(sheets[i].getName(), name)) return sheets[i];
   }
   var tpl = ss.getSheetByName("TEMPLATE");
   if (tpl) {
@@ -331,6 +333,33 @@ function json_(obj) {
 
 function sanitizeEventName_(name) {
   return String(name || "").replace(/[\[\]\*\/\\\?:]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+// Fuzzy event-name equality: case/spacing/punctuation-insensitive, and up to
+// 2 edits apart ("QB2 Tokyo" ≈ "Q2B Tokyo") — but names whose DIGITS differ
+// are always different events ("Q2B 2025" vs "Q2B 2026").
+function sameEvent_(a, b) {
+  var na = normEvent_(a), nb = normEvent_(b);
+  if (na === nb) return true;
+  if (na.replace(/[^0-9]/g, "") !== nb.replace(/[^0-9]/g, "")) return false;
+  if (Math.min(na.length, nb.length) < 5) return false;
+  return levenshtein_(na, nb) <= 2;
+}
+function normEvent_(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function levenshtein_(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 99;
+  var prev = [];
+  for (var j = 0; j <= b.length; j++) prev[j] = j;
+  for (var i = 1; i <= a.length; i++) {
+    var cur = [i];
+    for (var k = 1; k <= b.length; k++) {
+      cur[k] = Math.min(prev[k] + 1, cur[k - 1] + 1, prev[k - 1] + (a[i - 1] === b[k - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
 }
 
 // Run this once from the editor (▶) to trigger the FULL Drive permission prompt
