@@ -234,7 +234,13 @@
     <div class="reticle"></div>
     <div id="scan-hint"></div>
     <button id="shutter" aria-label="Take photo"></button>
-    <button id="cam-start">📷<br>Tap to start the camera</button>
+    <button id="cam-start">
+      <span style="font-size:34px">📷</span>
+      <span>Tap to start the camera</span>
+      <span style="font-size:12px; font-weight:400; color:var(--muted); max-width:280px; line-height:1.5">
+        Tip: to skip this next time, tap <b>aA</b> in the address bar → Website Settings → Camera → <b>Allow</b>
+      </span>
+    </button>
   </div>
   <p class="sub center" style="margin-top:10px">Aim at the badge — QR reads by itself, or press the button to photograph the badge.</p>
   <div class="scanlinks">
@@ -447,8 +453,9 @@ function show(id) {
 }
 function go(tab) {
   state.tab = tab;
+  localStorage.setItem("bs_tab", tab); // refresh restores the same tab
   document.querySelectorAll("#bottomnav button").forEach(b => b.classList.toggle("cur", b.dataset.tab === tab));
-  if (tab === "scan") { show("scr-scan"); startCamera(); }
+  if (tab === "scan") { show("scr-scan"); startCamera(false); }
   if (tab === "stats") { show("scr-stats"); renderStats(); }
   if (tab === "leads") { show("scr-leads"); renderLeads(); }
   if (tab === "history") { show("scr-history"); renderHistory(false); }
@@ -581,7 +588,18 @@ function onGoogleCredential(resp) {
 }
 
 // ---------------- unified camera: QR auto-read + photo shutter ----------------
-async function startCamera() {
+// Auto-start only when the browser already granted camera access; otherwise a
+// tap-to-start state, so refreshes never fire a surprise permission prompt.
+async function canAutoStartCamera() {
+  try {
+    const s = await navigator.permissions.query({ name: "camera" });
+    return s.state === "granted";
+  } catch (e) {
+    // no Permissions API → fall back to "it worked before on this phone"
+    return localStorage.getItem("bs_cam_ok") === "1";
+  }
+}
+async function startCamera(userGesture) {
   $("scan-evt").innerHTML = `<b>${esc(state.event)}</b> · ${esc(state.rep)}`;
   $("scan-camhelp").style.display = "none";
   $("scan-hint").style.display = "none";
@@ -589,12 +607,18 @@ async function startCamera() {
   state.qrMuted = false;
   state.pendingBadgeId = "";
   if (state.stream) return; // already running
+  if (!userGesture && !(await canAutoStartCamera())) {
+    $("cam-start").style.display = "flex";
+    return;
+  }
   try {
     state.stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: "environment", width: { ideal: 1600 } }, audio: false,
     });
+    localStorage.setItem("bs_cam_ok", "1");
   } catch (err) {
     if (err && (err.name === "NotAllowedError" || err.name === "SecurityError")) {
+      localStorage.removeItem("bs_cam_ok");
       $("scan-camhelp").style.display = "";
     } else {
       $("cam-start").style.display = "flex"; // needs a tap (iOS gesture rules) or transient error
@@ -623,7 +647,7 @@ function stopCamera() {
   if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
   $("video").srcObject = null;
 }
-$("cam-start").onclick = () => startCamera();
+$("cam-start").onclick = () => startCamera(true);
 $("scan-settings").onclick = (e) => { e.preventDefault(); fillSetup(); show("scr-setup"); };
 $("scan-manual").onclick = (e) => { e.preventDefault(); openForm({ mode: "manual" }); };
 $("scan-upload").onclick = (e) => { e.preventDefault(); state.photoTarget = "lead"; $("photoInput").click(); };
@@ -979,7 +1003,7 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<"
   });
   const confirmedToday = localStorage.getItem("bs_confirm_date") === todayStr();
   if (state.event && state.rep && confirmedToday) {
-    go("scan"); // straight into the camera
+    go(localStorage.getItem("bs_tab") || "scan"); // refresh keeps you on the same tab
   } else {
     fillSetup();
     show("scr-setup");
