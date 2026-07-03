@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0d1220">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Classiq Badge Scanner</title>
+<style>
+  :root {
+    --bg: #0d1220; --card: #171e31; --line: #2a3350;
+    --text: #eef1f8; --muted: #8b94ad;
+    --accent: #4f7cff; --hot: #ff5a5a; --warm: #ffb04f; --cold: #5ab8ff;
+    --ok: #3ecf8e; --danger: #ff5a5a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 16px; overscroll-behavior: none;
+  }
+  .screen { display: none; min-height: 100dvh; padding: 20px 16px calc(24px + env(safe-area-inset-bottom)); }
+  .screen.active { display: flex; flex-direction: column; }
+  h1 { font-size: 22px; font-weight: 700; }
+  h2 { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
+  .sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+  .topbar .back { background: none; border: none; color: var(--accent); font-size: 16px; padding: 8px 8px 8px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 5px; }
+  input, select, textarea {
+    width: 100%; padding: 13px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font-size: 16px; appearance: none;
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  button.primary {
+    width: 100%; padding: 16px; border: none; border-radius: 12px;
+    background: var(--accent); color: #fff; font-size: 17px; font-weight: 600; margin-top: 14px;
+  }
+  button.secondary {
+    width: 100%; padding: 14px; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--card); color: var(--text); font-size: 16px; margin-top: 10px;
+  }
+  button:disabled { opacity: .5; }
+  .bigscan {
+    width: 100%; padding: 26px; border: none; border-radius: 16px; margin-top: 6px;
+    background: var(--accent); color: #fff; font-size: 20px; font-weight: 700;
+  }
+  .seg { display: flex; gap: 8px; }
+  .seg button {
+    flex: 1; padding: 13px 4px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--muted); font-size: 15px; font-weight: 600;
+  }
+  .seg button.sel-hot  { background: var(--hot);  border-color: var(--hot);  color: #fff; }
+  .seg button.sel-warm { background: var(--warm); border-color: var(--warm); color: #23180a; }
+  .seg button.sel-cold { background: var(--cold); border-color: var(--cold); color: #0a1a23; }
+  .pill {
+    display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  }
+  .pill.pending { background: #3a2f14; color: var(--warm); }
+  .pill.synced { background: #14321f; color: var(--ok); }
+  .banner { border-radius: 12px; padding: 12px 14px; font-size: 14px; margin-bottom: 14px; }
+  .banner.red { background: #3a1620; color: #ffb3c0; }
+  .banner.blue { background: #16233a; color: #b3ccff; }
+  #toast {
+    position: fixed; left: 16px; right: 16px; bottom: calc(28px + env(safe-area-inset-bottom));
+    background: #222c47; color: var(--text); padding: 14px 16px; border-radius: 12px;
+    font-size: 15px; text-align: center; opacity: 0; pointer-events: none;
+    transition: opacity .25s; z-index: 50; border: 1px solid var(--line);
+  }
+  #toast.show { opacity: 1; }
+  /* scanner */
+  #videoWrap { position: relative; border-radius: 16px; overflow: hidden; background: #000; flex: 1; min-height: 320px; }
+  #video { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
+  .reticle {
+    position: absolute; inset: 0; margin: auto; width: 62%; aspect-ratio: 1;
+    border: 2px solid rgba(255,255,255,.75); border-radius: 14px; pointer-events: none;
+  }
+  .leadrow { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .leadrow:last-child { border-bottom: none; }
+  .leadrow .who { font-size: 15px; font-weight: 600; }
+  .leadrow .co { font-size: 13px; color: var(--muted); }
+  .thumb { width: 100%; border-radius: 10px; margin-top: 8px; max-height: 180px; object-fit: cover; }
+  .spin {
+    width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .row2 { display: flex; gap: 10px; }
+  .row2 > div { flex: 1; }
+  .homehead { display: flex; justify-content: space-between; align-items: baseline; }
+  .evt { color: var(--muted); font-size: 13px; }
+  a.link { color: var(--accent); text-decoration: none; font-size: 15px; }
+  .center { text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- ============ SETUP / NOT CONFIGURED ============ -->
+<div class="screen" id="scr-noconfig">
+  <h1>Not configured</h1>
+  <p class="sub" style="margin-top:12px">This app has no backend URL yet. Ask Matan — the Apps Script URL needs to be set in the app's CONFIG.</p>
+</div>
+
+<div class="screen" id="scr-setup">
+  <h1>Badge Scanner</h1>
+  <p class="sub">One-time setup for this phone</p>
+  <div class="card" style="margin-top:18px">
+    <label for="setup-event">Event</label>
+    <select id="setup-event"></select>
+    <label for="setup-rep">Your name</label>
+    <select id="setup-rep"></select>
+    <button class="primary" id="setup-save">Start scanning</button>
+    <p class="sub center" id="setup-status" style="margin-top:10px"></p>
+  </div>
+</div>
+
+<!-- ============ HOME ============ -->
+<div class="screen" id="scr-home">
+  <div class="homehead">
+    <div>
+      <h1>Badge Scanner</h1>
+      <div class="evt" id="home-evt"></div>
+    </div>
+    <a class="link" id="home-settings" href="#">Change</a>
+  </div>
+  <div class="banner red" id="home-stale" style="display:none">
+    ⚠️ Unsynced leads from over 12 hours ago — tap Sync now before you lose them.
+  </div>
+  <button class="bigscan" id="home-scan" style="margin-top:16px">📷 &nbsp;Scan badge QR</button>
+  <button class="secondary" id="home-photo">🪪 &nbsp;Photo of badge</button>
+  <button class="secondary" id="home-manual">⌨️ &nbsp;Type manually</button>
+  <div class="card" style="margin-top:18px">
+    <div style="display:flex; justify-content:space-between; align-items:center">
+      <h2 style="margin:0">Captured <span id="home-count"></span></h2>
+      <button id="home-sync" style="background:none;border:1px solid var(--line);color:var(--accent);border-radius:8px;padding:7px 12px;font-size:14px">Sync now</button>
+    </div>
+    <div id="home-list" style="margin-top:6px"></div>
+  </div>
+</div>
+
+<!-- ============ QR SCAN ============ -->
+<div class="screen" id="scr-scan">
+  <div class="topbar">
+    <button class="back" id="scan-back">‹ Back</button>
+    <h2 style="margin:0">Aim at the badge QR</h2>
+    <span style="width:44px"></span>
+  </div>
+  <div id="videoWrap">
+    <video id="video" playsinline muted></video>
+    <div class="reticle"></div>
+  </div>
+  <button class="secondary" id="scan-photo">Badge has no QR? Take a photo instead</button>
+  <div class="card" id="scan-camhelp" style="display:none">
+    Camera is blocked. On iPhone: Settings → Safari (or aA menu → Website Settings) → Camera → Allow, then reload.
+    Or use <b>Type manually</b> below.
+    <button class="secondary" id="scan-manual">Type manually</button>
+  </div>
+</div>
+
+<!-- ============ DETAILS FORM ============ -->
+<div class="screen" id="scr-form">
+  <div class="topbar">
+    <button class="back" id="form-back">‹ Cancel</button>
+    <h2 style="margin:0" id="form-title">Lead details</h2>
+    <span style="width:44px"></span>
+  </div>
+  <div class="banner blue" id="form-extracting" style="display:none">
+    <div class="spin" style="display:inline-block;vertical-align:middle;margin-right:10px"></div>
+    Reading the badge photo…
+  </div>
+  <div class="banner blue" id="form-offlinephoto" style="display:none">
+    📴 Offline — the photo is saved and contact details will be extracted automatically when you sync. You can also type them now.
+  </div>
+  <div class="card">
+    <img id="form-thumb" class="thumb" style="display:none" alt="badge photo">
+    <div class="row2">
+      <div><label>First name</label><input id="f-first" autocomplete="off"></div>
+      <div><label>Last name</label><input id="f-last" autocomplete="off"></div>
+    </div>
+    <label>Title</label><input id="f-title" autocomplete="off">
+    <label>Company</label><input id="f-company" autocomplete="off">
+    <label>Email</label><input id="f-email" type="email" autocomplete="off" autocapitalize="none">
+    <label>Phone</label><input id="f-phone" type="tel" autocomplete="off">
+  </div>
+  <div class="card">
+    <label style="margin-top:0">Lead temperature</label>
+    <div class="seg" id="f-temp">
+      <button data-v="Hot">🔥 Hot</button>
+      <button data-v="Warm">Warm</button>
+      <button data-v="Cold">Cold</button>
+    </div>
+    <label>Follow-up</label>
+    <select id="f-followup">
+      <option value="">— choose —</option>
+      <option>Book demo</option>
+      <option>Send materials</option>
+      <option>Add to nurture</option>
+      <option>No action</option>
+    </select>
+    <label>Note (optional)</label>
+    <textarea id="f-note" placeholder="What did they ask about?"></textarea>
+  </div>
+  <button class="primary" id="form-save">Save lead</button>
+</div>
+
+<div id="toast"></div>
+<input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none">
+
+<script src="jsqr.min.js"></script>
+<script>
+"use strict";
+
+// ======================= CONFIG =======================
+const CONFIG = {
+  APPS_SCRIPT_URL: "", // paste the Apps Script /exec URL here
+  SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
+};
+// ======================================================
+
+const $ = (id) => document.getElementById(id);
+const state = {
+  event: localStorage.getItem("bs_event") || "",
+  rep: localStorage.getItem("bs_rep") || "",
+  remote: JSON.parse(localStorage.getItem("bs_remote") || '{"events":[],"reps":[]}'),
+  draft: null,        // lead being edited in the form
+  stream: null,
+  scanTimer: null,
+  syncing: false,
+};
+
+// ---------------- IndexedDB queue ----------------
+const DB = {
+  db: null,
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open("badge-scanner", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("leads", { keyPath: "uuid" });
+      r.onsuccess = () => { DB.db = r.result; res(); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  tx(mode) { return DB.db.transaction("leads", mode).objectStore("leads"); },
+  put(rec) {
+    return new Promise((res, rej) => {
+      const q = DB.tx("readwrite").put(rec);
+      q.onsuccess = res; q.onerror = () => rej(q.error);
+    });
+  },
+  all() {
+    return new Promise((res, rej) => {
+      const q = DB.tx("readonly").getAll();
+      q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+    });
+  },
+};
+
+// ---------------- screens / nav ----------------
+function show(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  $(id).classList.add("active");
+  if (id !== "scr-scan") stopCamera();
+}
+let toastTimer;
+function toast(msg, ms = 2400) {
+  $("toast").textContent = msg;
+  $("toast").classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("toast").classList.remove("show"), ms);
+}
+
+// ---------------- backend calls ----------------
+// text/plain keeps the request "simple" (no CORS preflight, which Apps Script can't answer)
+async function api(body) {
+  const resp = await fetch(CONFIG.APPS_SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(Object.assign({ secret: CONFIG.SHARED_SECRET }, body)),
+  });
+  return resp.json();
+}
+async function refreshRemoteConfig() {
+  try {
+    const resp = await fetch(CONFIG.APPS_SCRIPT_URL);
+    const data = await resp.json();
+    if (data.ok) {
+      state.remote = { events: data.events, reps: data.reps };
+      localStorage.setItem("bs_remote", JSON.stringify(state.remote));
+    }
+  } catch (e) { /* offline — cached config is fine */ }
+}
+
+// ---------------- setup screen ----------------
+function fillSetup() {
+  const urlEvent = new URLSearchParams(location.search).get("event");
+  const ev = $("setup-event"), rp = $("setup-rep");
+  ev.innerHTML = state.remote.events.map(e => `<option>${esc(e)}</option>`).join("") || "<option value=''>— no events yet —</option>";
+  rp.innerHTML = state.remote.reps.map(r => `<option>${esc(r)}</option>`).join("") || "<option value=''>— no reps yet —</option>";
+  if (urlEvent && state.remote.events.includes(urlEvent)) ev.value = urlEvent;
+  if (state.event) ev.value = state.event;
+  if (state.rep) rp.value = state.rep;
+  $("setup-status").textContent = state.remote.events.length ? "" : "Loading events… (needs internet on first run)";
+}
+$("setup-save").onclick = () => {
+  const ev = $("setup-event").value, rp = $("setup-rep").value;
+  if (!ev || !rp) { toast("Pick an event and your name"); return; }
+  state.event = ev; state.rep = rp;
+  localStorage.setItem("bs_event", ev);
+  localStorage.setItem("bs_rep", rp);
+  goHome();
+};
+
+// ---------------- home screen ----------------
+async function goHome() {
+  $("home-evt").textContent = `${state.event} · ${state.rep}`;
+  const leads = (await DB.all()).sort((a, b) => b.createdAt - a.createdAt);
+  const pending = leads.filter(l => l.status === "pending");
+  $("home-count").textContent = `(${leads.length})`;
+  $("home-sync").textContent = pending.length ? `Sync now (${pending.length})` : "Synced ✓";
+  $("home-stale").style.display =
+    pending.some(l => Date.now() - l.createdAt > 12 * 3600e3) ? "" : "none";
+  $("home-list").innerHTML = leads.slice(0, 30).map(l => {
+    const f = l.lead.fields || {};
+    const who = esc([f.first_name, f.last_name].filter(Boolean).join(" ")) || "<i>photo — pending extraction</i>";
+    return `<div class="leadrow">
+      <div><div class="who">${who}</div><div class="co">${esc(f.company || "")}</div></div>
+      <span class="pill ${l.status}">${l.status === "synced" ? "synced" : "pending"}</span>
+    </div>`;
+  }).join("") || `<p class="sub" style="padding:10px 0">No leads yet — go scan!</p>`;
+  show("scr-home");
+}
+$("home-settings").onclick = (e) => { e.preventDefault(); fillSetup(); show("scr-setup"); };
+$("home-scan").onclick = () => startScan();
+$("home-photo").onclick = () => $("photoInput").click();
+$("home-manual").onclick = () => openForm({});
+$("home-sync").onclick = () => syncQueue(true);
+
+// ---------------- QR scanning ----------------
+async function startScan() {
+  show("scr-scan");
+  $("scan-camhelp").style.display = "none";
+  try {
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1280 } }, audio: false,
+    });
+  } catch (err) {
+    $("scan-camhelp").style.display = "";
+    return;
+  }
+  const video = $("video");
+  video.srcObject = state.stream;
+  await video.play();
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  state.scanTimer = setInterval(() => {
+    if (!video.videoWidth) return;
+    const scale = 640 / video.videoWidth;
+    canvas.width = 640;
+    canvas.height = Math.round(video.videoHeight * scale);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height);
+    if (code && code.data) onQrDecoded(code.data.trim());
+  }, 220);
+}
+function stopCamera() {
+  clearInterval(state.scanTimer);
+  state.scanTimer = null;
+  if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
+}
+$("scan-back").onclick = () => goHome();
+$("scan-photo").onclick = () => { stopCamera(); $("photoInput").click(); };
+$("scan-manual").onclick = () => openForm({});
+
+function onQrDecoded(raw) {
+  stopCamera();
+  if (navigator.vibrate) navigator.vibrate(80);
+  const parsed = parseBadgePayload(raw);
+  if (parsed) {
+    toast("Badge QR read ✓");
+    openForm({ fields: parsed });
+  } else {
+    toast("This QR has no contact info — snap a photo of the badge instead", 3500);
+    openForm({ badgeId: raw.slice(0, 120) });
+    setTimeout(() => $("photoInput").click(), 400);
+  }
+}
+
+// vCard / MECARD parsing; returns null for opaque payloads
+function parseBadgePayload(raw) {
+  if (/BEGIN:VCARD/i.test(raw)) {
+    const get = (prop) => {
+      const m = raw.match(new RegExp("^" + prop + "(?:;[^:]*)?:(.+)$", "im"));
+      return m ? m[1].replace(/\\,/g, ",").replace(/\\;/g, ";").trim() : "";
+    };
+    const f = { first_name: "", last_name: "", title: get("TITLE"), company: get("ORG").split(";")[0], email: get("EMAIL"), phone: get("TEL"), linkedin: "" };
+    const n = get("N");
+    if (n) { const p = n.split(";"); f.last_name = p[0] || ""; f.first_name = p[1] || ""; }
+    else {
+      const fn = get("FN").split(/\s+/);
+      f.first_name = fn.shift() || ""; f.last_name = fn.join(" ");
+    }
+    const url = get("URL");
+    if (/linkedin\.com/i.test(url)) f.linkedin = url;
+    return (f.first_name || f.last_name || f.email) ? f : null;
+  }
+  if (/^MECARD:/i.test(raw)) {
+    const get = (k) => {
+      const m = raw.match(new RegExp(k + ":([^;]*)", "i"));
+      return m ? m[1].trim() : "";
+    };
+    const f = { first_name: "", last_name: "", title: "", company: get("ORG"), email: get("EMAIL"), phone: get("TEL"), linkedin: "" };
+    const n = get("N").split(",");
+    f.last_name = (n[0] || "").trim(); f.first_name = (n[1] || "").trim();
+    return (f.first_name || f.last_name || f.email) ? f : null;
+  }
+  // bare email or "email in text" payloads
+  const email = raw.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
+  if (email) return { first_name: "", last_name: "", title: "", company: "", email: email[0], phone: "", linkedin: "" };
+  return null; // opaque registration ID
+}
+
+// ---------------- photo capture ----------------
+$("photoInput").addEventListener("change", async () => {
+  const file = $("photoInput").files[0];
+  $("photoInput").value = "";
+  if (!file) return;
+  const blob = await downscale(file);
+  const draft = state.draft && !state.draft.saved ? state.draft : {};
+  draft.photoBlob = blob;
+  openForm(draft);
+  $("form-thumb").src = URL.createObjectURL(blob);
+  $("form-thumb").style.display = "";
+  if (navigator.onLine && CONFIG.APPS_SCRIPT_URL) {
+    $("form-extracting").style.display = "";
+    try {
+      const b64 = await blobToBase64(blob);
+      const r = await api({ action: "extract", photoBase64: b64 });
+      if (r.ok) fillFields(r.fields);
+      else toast("Couldn't read the badge — type the details or retake");
+    } catch (e) {
+      $("form-offlinephoto").style.display = "";
+    }
+    $("form-extracting").style.display = "none";
+  } else {
+    $("form-offlinephoto").style.display = "";
+  }
+});
+
+function downscale(file) {
+  return new Promise((res) => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 1280;
+      const s = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * s);
+      c.height = Math.round(img.height * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(b => res(b), "image/jpeg", 0.7);
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+function blobToBase64(blob) {
+  return new Promise((res) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(",")[1]);
+    r.readAsDataURL(blob);
+  });
+}
+
+// ---------------- details form ----------------
+function openForm(draft) {
+  state.draft = draft || {};
+  ["f-first","f-last","f-title","f-company","f-email","f-phone","f-note"].forEach(id => $(id).value = "");
+  $("f-followup").value = "";
+  setTemp("");
+  $("form-thumb").style.display = "none";
+  $("form-extracting").style.display = "none";
+  $("form-offlinephoto").style.display = "none";
+  if (draft.fields) fillFields(draft.fields);
+  show("scr-form");
+}
+function fillFields(f) {
+  if (!f) return;
+  $("f-first").value = f.first_name || $("f-first").value;
+  $("f-last").value = f.last_name || $("f-last").value;
+  $("f-title").value = f.title || $("f-title").value;
+  $("f-company").value = f.company || $("f-company").value;
+  $("f-email").value = f.email || $("f-email").value;
+  $("f-phone").value = f.phone || $("f-phone").value;
+  if (f.linkedin) state.draft.linkedin = f.linkedin;
+}
+let tempSel = "";
+function setTemp(v) {
+  tempSel = v;
+  document.querySelectorAll("#f-temp button").forEach(b => {
+    b.className = b.dataset.v === v ? "sel-" + v.toLowerCase() : "";
+  });
+}
+document.querySelectorAll("#f-temp button").forEach(b => b.onclick = () => setTemp(b.dataset.v));
+$("form-back").onclick = () => goHome();
+
+$("form-save").onclick = async () => {
+  const fields = {
+    first_name: $("f-first").value.trim(), last_name: $("f-last").value.trim(),
+    title: $("f-title").value.trim(), company: $("f-company").value.trim(),
+    email: $("f-email").value.trim(), phone: $("f-phone").value.trim(),
+    linkedin: state.draft.linkedin || "",
+  };
+  const hasIdentity = fields.first_name || fields.last_name || fields.email || state.draft.photoBlob;
+  if (!hasIdentity) { toast("Add at least a name, email, or badge photo"); return; }
+  const rec = {
+    uuid: crypto.randomUUID(),
+    status: "pending",
+    createdAt: Date.now(),
+    photoBlob: state.draft.photoBlob || null,
+    lead: {
+      event: state.event, rep: state.rep, fields,
+      temperature: tempSel, followUp: $("f-followup").value,
+      note: $("f-note").value.trim(), badgeId: state.draft.badgeId || "",
+      capturedAt: new Date().toISOString(),
+    },
+  };
+  await DB.put(rec);
+  state.draft = { saved: true };
+  toast("Lead saved ✓");
+  goHome();
+  syncQueue(false);
+};
+
+// ---------------- sync engine ----------------
+async function syncQueue(manual) {
+  if (state.syncing || !CONFIG.APPS_SCRIPT_URL) return;
+  if (!navigator.onLine) { if (manual) toast("No internet — will sync when you're back online"); return; }
+  state.syncing = true;
+  let sent = 0, failed = 0;
+  try {
+    const pending = (await DB.all()).filter(l => l.status === "pending");
+    for (const rec of pending) {
+      try {
+        const body = { action: "submit", uuid: rec.uuid, lead: rec.lead };
+        const f = rec.lead.fields;
+        if (rec.photoBlob && !f.first_name && !f.last_name) {
+          body.photoBase64 = await blobToBase64(rec.photoBlob);
+        }
+        const r = await api(body);
+        if (r.ok) {
+          rec.status = "synced";
+          rec.photoBlob = null; // free storage once acked
+          await DB.put(rec);
+          sent++;
+        } else { failed++; console.warn("submit rejected", r); }
+      } catch (e) { failed++; break; } // network died — stop, retry later
+    }
+  } finally { state.syncing = false; }
+  if (manual || sent) toast(failed ? `Synced ${sent}, ${failed} failed — will retry` : sent ? `Synced ${sent} lead${sent > 1 ? "s" : ""} ✓` : "Nothing to sync");
+  if ($("scr-home").classList.contains("active")) goHome();
+}
+window.addEventListener("online", () => syncQueue(false));
+
+// ---------------- boot ----------------
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+(async function boot() {
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  if (!CONFIG.APPS_SCRIPT_URL) { show("scr-noconfig"); return; }
+  await DB.open();
+  refreshRemoteConfig().then(() => {
+    if ($("scr-setup").classList.contains("active")) fillSetup();
+  });
+  if (state.event && state.rep) { goHome(); syncQueue(false); }
+  else { fillSetup(); show("scr-setup"); }
+})();
+</script>
+</body>
+</html>
