@@ -298,6 +298,10 @@ function sanitizeEventName_(name) {
   return String(name || "").replace(/[\[\]\*\/\\\?:]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
-// Run this once from the editor (▶) to trigger the Drive permission prompt —
-// underscore-suffixed functions are hidden from the Run menu, this one isn't.
-function authorizeDrive() { DriveApp.getRootFolder(); }
+// Run this once from the editor (▶) to trigger the FULL Drive permission prompt
+// (a read-only call makes Google grant only drive.readonly, which isn't enough
+// to save badge photos). Also pre-creates the photos folder.
+function authorizeDrive() {
+  var it = DriveApp.getFoldersByName(PHOTO_FOLDER);
+  if (!it.hasNext()) DriveApp.createFolder(PHOTO_FOLDER);
+}
