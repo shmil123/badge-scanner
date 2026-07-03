@@ -18,7 +18,7 @@ Rep's phone (PWA on GitHub Pages)     Apps Script Web App (bound to sheet)     E
                                        LockService + first-empty-row write      → /event-leads-push (unchanged)
 ```
 
-- `webapp/` — the PWA (static, hosted on GitHub Pages)
+- `docs/` — the PWA (static, hosted on GitHub Pages)
 - `apps-script/Code.gs` — the backend; **source of truth lives here**, pasted into the
   sheet-bound Apps Script project. If you edit Code.gs, re-paste and create a new deployment.
 
