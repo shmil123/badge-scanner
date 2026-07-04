@@ -21,7 +21,13 @@ var RESERVED_TABS = ["TEMPLATE", "Config", "_sync"];
 var HAIKU_MODEL = "claude-haiku-4-5-20251001";
 var PHOTO_FOLDER = "Badge Scanner Photos";
 
+// Config moved behind the shared secret (POST action=config) — a bare GET must
+// not enumerate event names or rep names.
 function doGet(e) {
+  return json_({ ok: true });
+}
+
+function handleConfig_(req) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   ensureInfraTabs_(ss);
   var events = ss.getSheets()
@@ -44,7 +50,18 @@ function doPost(e) {
   if (!secret || req.secret !== secret) {
     return json_({ ok: false, error: "unauthorized" });
   }
+  // Bound abuse: the secret ships in a public web app, so cap request rates
+  // (CacheService counters) and photo payload size. Booth traffic never comes
+  // close to these numbers.
+  if (req.photoBase64 && req.photoBase64.length > 3000000) {
+    return json_({ ok: false, error: "photo too large" });
+  }
+  var limits = { extract: 20, submit: 120, config: 60, history: 30 };
+  if (!rateLimit_(req.action, limits[req.action] || 30)) {
+    return json_({ ok: false, error: "rate limited — try again in a minute" });
+  }
   try {
+    if (req.action === "config") return handleConfig_(req);
     if (req.action === "extract") return handleExtract_(req);
     if (req.action === "submit") return handleSubmit_(req);
     if (req.action === "history") return handleHistory_(req);
@@ -52,6 +69,14 @@ function doPost(e) {
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }
+}
+
+function rateLimit_(kind, maxPerMinute) {
+  var cache = CacheService.getScriptCache();
+  var key = "rl_" + kind + "_" + Math.floor(Date.now() / 60000);
+  var n = Number(cache.get(key) || 0) + 1;
+  cache.put(key, String(n), 90);
+  return n <= maxPerMinute;
 }
 
 // ---------- history: per-event aggregates for the app's History/Today tabs ----------

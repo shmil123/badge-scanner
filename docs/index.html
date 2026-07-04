@@ -389,7 +389,7 @@ const CONFIG = {
   SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
   GOOGLE_CLIENT_ID: "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googleusercontent.com",
   ALLOWED_DOMAIN: "classiq.io",
-  APP_VERSION: "v12", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v13", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -492,9 +492,8 @@ async function api(body) {
 }
 async function refreshRemoteConfig() {
   try {
-    const resp = await fetch(CONFIG.APPS_SCRIPT_URL);
-    const data = await resp.json();
-    if (data.ok) {
+    const data = await api({ action: "config" });
+    if (data.ok && data.events) {
       state.remote = { events: data.events, reps: data.reps };
       localStorage.setItem("bs_remote", JSON.stringify(state.remote));
     }
@@ -1062,6 +1061,14 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<"
   if (!CONFIG.APPS_SCRIPT_URL) { show("scr-noconfig"); return; }
   if (window.google) window._gisLoaded(); // gsi script may have loaded before this one
   await DB.open();
+  // privacy: badge contacts don't live on personal phones forever —
+  // purge synced leads after 30 days (pending ones are never touched)
+  try {
+    const cutoff = Date.now() - 30 * 86400e3;
+    for (const l of await DB.all()) {
+      if (l.status === "synced" && l.createdAt < cutoff) await DB.del(l.uuid);
+    }
+  } catch (e) { /* non-critical */ }
   refreshRemoteConfig().then(() => {
     if ($("scr-setup").classList.contains("active")) fillSetup();
   });

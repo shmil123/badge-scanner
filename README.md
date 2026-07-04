@@ -48,6 +48,30 @@ dropdown fed from the sheet's `Config` tab.
 - Camera blocked? iPhone: aA menu → Website Settings → Camera → Allow. Or use **Type manually**.
 - Blurry badge photo? Retake — the thumbnail on the form shows what the extractor sees.
 
+## Security & privacy model
+
+**Where lead data (PII) lives:**
+- Reps' phones: IndexedDB, per device; synced leads auto-purge after 30 days; per-lead
+  "Remove from this phone" + full "Clear all leads" available in the app.
+- Google Sheet + Drive photos folder: under the Classiq Google account; access = sheet sharing.
+- Anthropic API: badge photos are processed transiently for text extraction; API data is not
+  used for model training by default.
+- HubSpot: only rows Matan explicitly ticks Push? on.
+
+**Auth model (and its honest limits):**
+- Reps sign in with Google restricted to @classiq.io — this drives lead ownership/attribution.
+  The ID token is checked client-side only; the backend trusts the shared secret, not the token.
+- The shared secret + Apps Script URL are visible in this public repo. This is friction against
+  bots, not real secrecy. Blast radius is bounded by: per-minute rate limits on every action,
+  a payload size cap, human review before anything reaches HubSpot, and the API key/credentials
+  living only in Script Properties (never in the client).
+- Worst realistic abuse: junk rows in a human-reviewed sheet, or wasted Haiku cents up to the
+  rate cap. Rotating: change `SHARED_SECRET` in Script Properties + CONFIG in index.html.
+
+**Rep etiquette:** ask the attendee before photographing their badge — same consent norm as
+the official event scanners. Badge data is business contact information collected for follow-up
+they requested at the booth.
+
 ## Known trade-offs
 
 - The repo is public, so the Apps Script URL + shared secret are visible. Worst case is junk rows
