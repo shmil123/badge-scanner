@@ -14,9 +14,10 @@ var HEADERS = [
   "First Name", "Last Name", "Title", "Company", "Email", "Phone",
   "LinkedIn URL", "Event", "Captured By", "Captured At", "Source",
   "Rep Note", "Temperature", "Follow-up",
-  "Push?", "HubSpot Status", "Badge Photo"
+  "Push?", "HubSpot Status", "Badge Photo",
+  "Lead Type", "Country", "State", "Company URL"
 ];
-var PUSH_COL = 15; // "Push?" checkbox column (O)
+var PUSH_COL = 15; // "Push?" checkbox column (O) — unchanged; new cols appended at R-U
 var RESERVED_TABS = ["TEMPLATE", "Config", "_sync"];
 var HAIKU_MODEL = "claude-haiku-4-5-20251001";
 var PHOTO_FOLDER = "Badge Scanner Photos";
@@ -216,7 +217,8 @@ function handleSubmit_(req) {
       lead.capturedAt || new Date().toISOString(), "badge",
       composeRepNote_(lead, fields),
       lead.temperature || "", lead.followUp || "",
-      false, "", photoUrl
+      false, "", photoUrl,
+      lead.leadType || "", "", "", "" // Lead Type (rep); Country/State/Company URL blank (enrichment fills at push)
     ]]);
     upsertLedger_(sync, req.uuid, ws.getName(), row, lead.repEmail || "");
     return json_({ ok: true, row: row, event: ws.getName(), fields: publicFields_(fields) });
@@ -251,6 +253,8 @@ function updateRow_(ss, existing, lead, fields) {
   ws.getRange(row, 12, 1, 3).setValues([[
     composeRepNote_(lead, fields), lead.temperature || cur[12], lead.followUp || cur[13]
   ]]);
+  // Lead Type (col 18) — rep-editable; Country/State/Company URL (19-21) are enrichment-owned, never touched here.
+  ws.getRange(row, 18).setValue(lead.leadType || cur[17]);
   return json_({ ok: true, row: row, event: existing.tab, updated: true, fields: merged });
 }
 
@@ -330,9 +334,11 @@ function ensureEventTab_(ss, name) {
   return fresh;
 }
 
-// Upgrade tabs from older layouts to the 17-column schema: drop the legacy
+// Upgrade tabs from older layouts to the 21-column schema: drop the legacy
 // ICP Fit / Why Relevant pair, insert Temperature/Follow-up after Rep Note
-// (checkbox validation shifts along automatically), add Badge Photo at the end.
+// (checkbox validation shifts along automatically), then ensure the trailing
+// headers (Badge Photo + Lead Type/Country/State/Company URL) exist at cols 17-21.
+// Appending only — never shifts Push? (O) or the Temperature/Follow-up indices.
 // Safe to call repeatedly.
 function migrateTab_(ws) {
   var head = ws.getRange(1, 1, 1, Math.max(ws.getLastColumn(), 1)).getValues()[0];
@@ -346,8 +352,12 @@ function migrateTab_(ws) {
     ws.getRange(1, 13, 1, 2).setValues([["Temperature", "Follow-up"]]).setFontWeight("bold");
     head = ws.getRange(1, 1, 1, ws.getLastColumn()).getValues()[0];
   }
-  if (head[HEADERS.length - 1] !== "Badge Photo") {
-    ws.getRange(1, HEADERS.length).setValue("Badge Photo").setFontWeight("bold");
+  // Ensure every trailing header (cols 17-21) is present & correct — sets any
+  // that are missing/mismatched, extending the sheet as needed. Idempotent.
+  for (var c = 17; c <= HEADERS.length; c++) {
+    if (head[c - 1] !== HEADERS[c - 1]) {
+      ws.getRange(1, c).setValue(HEADERS[c - 1]).setFontWeight("bold");
+    }
   }
 }
 

@@ -348,6 +348,14 @@
       <button data-v="">Regular</button>
       <button data-v="Hot">🔥 Hot</button>
     </div>
+    <label>Lead type</label>
+    <select id="f-leadtype">
+      <option value="">— select —</option>
+      <option value="Partnership">Partnership</option>
+      <option value="Sales">Sales</option>
+      <option value="Academia">Academia</option>
+      <option value="Other">Other</option>
+    </select>
     <label>Notes — required</label>
     <textarea id="f-note" placeholder="What did they ask about? What's next?"></textarea>
   </div>
@@ -389,7 +397,7 @@ const CONFIG = {
   SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
   GOOGLE_CLIENT_ID: "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googleusercontent.com",
   ALLOWED_DOMAIN: "classiq.io",
-  APP_VERSION: "v13", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v14", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -580,7 +588,16 @@ $("setup-save").onclick = () => {
   if (!ev) { toast("Enter the event name (or tap 📷 to read it off a badge)"); $("setup-event").focus(); return; }
   // typo protection: snap to an existing event ("QB2 tokyo" → "Q2B Tokyo")
   const match = state.remote.events.find(e => sameEvent(e, ev));
-  if (match && match !== ev) { ev = match; toast("Matched to existing event: " + match); }
+  if (match) {
+    if (match !== ev) { ev = match; toast("Matched to existing event: " + match); }
+  } else {
+    // Not a known event — guard against drift (SC2026 vs Supercomputing Chicago).
+    // Deliberate new events are allowed, but only via an explicit confirm.
+    if (!confirm("\"" + ev + "\" isn't in the event list yet.\n\nCreate it as a NEW event?\n\n(If you're at an event that's already set up, tap Cancel and pick it from the list below.)")) {
+      $("setup-event").focus();
+      return;
+    }
+  }
   state.event = ev; state.rep = rp;
   localStorage.setItem("bs_event", ev);
   localStorage.setItem("bs_rep", rp);
@@ -757,8 +774,12 @@ $("photoInput").addEventListener("change", async () => {
     try {
       const r = await api({ action: "extract", photoBase64: await blobToBase64(blob) });
       if (r.ok && r.fields.event_name) {
-        $("setup-event").value = r.fields.event_name;
-        toast("Event: " + r.fields.event_name + " ✓");
+        // Snap the badge-read name to an existing event tab if it's close, so
+        // "SC2026" off a badge maps to the pre-created "Supercomputing 2026".
+        const match = state.remote.events.find(e => sameEvent(e, r.fields.event_name));
+        const ev = match || r.fields.event_name;
+        $("setup-event").value = ev;
+        toast(match ? ("Event: " + ev + " ✓") : ("Read: " + ev + " — tap Continue to confirm"));
       } else {
         toast("Couldn't find an event name on that badge — type it instead");
       }
@@ -788,7 +809,7 @@ $("galleryInput").addEventListener("change", async () => {
       photoBlob: blob,
       lead: {
         event: state.event, rep: state.rep, repEmail: state.repEmail,
-        fields: {}, temperature: "", followUp: "", note: "", badgeId: "",
+        fields: {}, temperature: "", followUp: "", leadType: "", note: "", badgeId: "",
         capturedAt: new Date().toISOString(),
       },
     });
@@ -828,7 +849,7 @@ function blobToBase64(blob) {
 function openForm(draft) {
   state.draft = draft || {};
   const mode = state.draft.mode || "manual";
-  ["f-first","f-last","f-title","f-company","f-email","f-phone","f-note"].forEach(id => $(id).value = "");
+  ["f-first","f-last","f-title","f-company","f-email","f-phone","f-note","f-leadtype"].forEach(id => $(id).value = "");
   setHot("");
   $("form-title").textContent = mode === "edit" ? "Edit lead" : "New lead";
   $("form-save").textContent = mode === "edit" ? "Save changes" : "Save lead";
@@ -843,6 +864,7 @@ function openForm(draft) {
   if (mode === "edit") {
     setHot(state.draft.temperature === "Hot" ? "Hot" : "");
     $("f-note").value = state.draft.note || "";
+    $("f-leadtype").value = state.draft.leadType || "";
   }
   show("scr-form");
 }
@@ -858,6 +880,7 @@ async function editLead(uuid) {
     mode: "edit", editUuid: uuid,
     fields: rec.lead.fields, photoBlob: rec.photoBlob,
     temperature: rec.lead.temperature, note: rec.lead.note,
+    leadType: rec.lead.leadType,
     badgeId: rec.lead.badgeId, linkedin: (rec.lead.fields || {}).linkedin,
     createdAt: rec.createdAt, capturedAt: rec.lead.capturedAt,
   });
@@ -900,7 +923,7 @@ $("form-save").onclick = async () => {
     photoBlob: state.draft.photoBlob || null,
     lead: {
       event: state.event, rep: state.rep, repEmail: state.repEmail, fields,
-      temperature: hotSel, followUp: "",
+      temperature: hotSel, followUp: "", leadType: $("f-leadtype").value,
       note, badgeId: state.draft.badgeId || "",
       capturedAt: state.draft.capturedAt || new Date().toISOString(),
     },

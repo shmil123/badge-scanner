@@ -6,16 +6,18 @@ through the normal review → `/event-leads-push` → HubSpot flow. Nothing down
 
 **Flow per lead (~20 seconds):** Scan badge QR → if the QR has contact info it prefills;
 if not, snap a photo of the badge and the details are extracted automatically →
-pick Hot/Warm/Cold + follow-up action + optional note → Save. Works offline; syncs
-when the phone gets signal.
+mark Hot (or Regular) → pick a lead type (Partnership / Sales / Academia / Other) →
+note → Save. Works offline; syncs when the phone gets signal.
 
 ## Architecture
 
 ```
 Rep's phone (PWA on GitHub Pages)     Apps Script Web App (bound to sheet)     Event Leads sheet
- QR scan / badge photo / manual   →    secret check, UUID dedupe (_sync tab),   per-event tab, 16 cols,
- IndexedDB offline queue               Claude Haiku photo extraction,           Rep Note = "[HOT] Next: … — note"
-                                       LockService + first-empty-row write      → /event-leads-push (unchanged)
+ QR scan / badge photo / manual   →    secret check, UUID dedupe (_sync tab),   per-event tab, 21 cols,
+ IndexedDB offline queue               Claude Haiku photo extraction,           Lead Type set by rep;
+                                       LockService + first-empty-row write      Country/State/Company URL
+                                                                                filled at push by ZoomInfo
+                                                                                → /event-leads-push
 ```
 
 - `docs/` — the PWA (static, hosted on GitHub Pages)
@@ -34,9 +36,12 @@ dropdown fed from the sheet's `Config` tab.
 
 ## Per event
 
-1. Nothing to pre-create — the event tab is auto-created (copy of `TEMPLATE`, so the Push?
-   checkboxes come along) when the first lead arrives. Reps type the event name on first run or
-   read it off a badge with the 📷 button; the `?event=` URL param pre-fills it.
+1. **Pre-create the event tab** (duplicate `TEMPLATE`, rename it to the event) so reps pick a
+   single canonical name instead of inventing variants. Pre-created tabs appear automatically in
+   the app as tappable chips + autocomplete. Reps can still type/read a name off a badge (📷), and
+   the `?event=` URL param pre-fills it — but a name that isn't already an event now triggers a
+   **"create it as a NEW event?" confirm**, so nobody spawns "SC2026" alongside "Supercomputing 2026"
+   by accident. (If a tab genuinely doesn't exist yet, it's still auto-created on first lead.)
 2. Print a booth poster QR pointing to `https://<pages-url>/?event=<Event%20Name>` — reps scan it,
    sign in once, done. Tell them to open it **while on WiFi once** so the app caches for offline.
 3. New reps: make sure their Google display name exists in `rep_map.json` for owner assignment.

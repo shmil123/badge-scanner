@@ -72,12 +72,29 @@ Until C is done the app simply shows a name dropdown instead of the Google butto
 2. Tell me when done — I'll create the repo, publish the app, wire in the `/exec` URL from block B,
    smoke-test everything, and hand you the app link + a printable booth poster QR.
 
+## E. Lead Type + enrichment update (one-time — for the v14 schema change)
+
+The app now captures a **Lead Type** and the sheet gained **Country / State / Company URL**
+(ZoomInfo-filled at push). Three one-time steps:
+
+1. **Re-deploy Code.gs** — paste the updated [`apps-script/Code.gs`](apps-script/Code.gs) and ship a
+   new version (see the "If you later change Code.gs" note in block B). Existing event tabs
+   auto-upgrade to the 21-column schema on the next lead; the app is already on `v14`.
+2. **Refresh the TEMPLATE tab** — from `event-leads/` run `python setup_sheet.py` once so new event
+   tabs start with all 21 columns.
+3. **HubSpot `lead_type__c`** — in Settings → Properties → the "Lead Type" (`lead_type__c`) contact
+   property, add the options **`Sales`** and **`Other`** (Partnership→`Partner` and
+   Academia→`Academic/Research` already exist). Without these, those two values are flagged at push
+   instead of set.
+
 ---
 
 ## After setup — per event checklist (this is all that's left each time)
 
-1. Nothing to prepare in the sheet — the event tab is **created automatically** on the first lead
-   (reps can type the event name or read it straight off a badge with the 📷 button).
+1. **Pre-create the event tab**: duplicate `TEMPLATE`, rename it to the event. Reps then pick that
+   one canonical name (chips/autocomplete) instead of inventing variants; typing a genuinely new
+   name now asks for confirmation first. (If you skip this, the tab is still auto-created on the
+   first lead.)
 2. Optional: print a poster QR for `https://<app-url>/?event=<Event%20Name>` so reps skip typing.
 3. New rep? If Google sign-in is on, nothing to do in the app — just make sure their name
    (as it appears in Google) exists in `event-leads/rep_map.json` so the HubSpot push assigns them as owner.
