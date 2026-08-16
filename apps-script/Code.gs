@@ -34,7 +34,11 @@ function handleConfig_(req) {
   var events = ss.getSheets()
     .map(function (s) { return s.getName(); })
     .filter(function (n) { return RESERVED_TABS.indexOf(n) === -1; });
-  var reps = ss.getSheetByName("Config").getRange("A2:A50").getValues()
+  // Read to the last populated row, never a fixed range — a hardcoded A2:A50 silently
+  // truncated the rep list the moment the roster passed 49 names (Aug 2026).
+  var cfg = ss.getSheetByName("Config");
+  var lastRep = cfg.getLastRow();
+  var reps = lastRep < 2 ? [] : cfg.getRange(2, 1, lastRep - 1, 1).getValues()
     .map(function (r) { return String(r[0]).trim(); })
     .filter(function (v) { return v; });
   return json_({ ok: true, events: events, reps: reps });
