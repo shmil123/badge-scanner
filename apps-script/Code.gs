@@ -323,6 +323,7 @@ function handleSubmit_(req) {
       false, "", photoUrl,
       lead.leadType || "", "", "", "" // Lead Type (rep); Country/State/Company URL blank (enrichment fills at push)
     ]]);
+    SpreadsheetApp.flush(); // commit the lead row BEFORE recording it in the ledger or reporting ok
     upsertLedger_(sync, req.uuid, ws.getName(), row, lead.repEmail || "");
     return json_({ ok: true, row: row, event: ws.getName(), fields: publicFields_(fields) });
   } finally {
@@ -358,6 +359,7 @@ function updateRow_(ss, existing, lead, fields) {
   ]]);
   // Lead Type (col 18) — rep-editable; Country/State/Company URL (19-21) are enrichment-owned, never touched here.
   ws.getRange(row, 18).setValue(lead.leadType || cur[17]);
+  SpreadsheetApp.flush(); // commit the update before reporting ok
   return json_({ ok: true, row: row, event: existing.tab, updated: true, fields: merged });
 }
 
