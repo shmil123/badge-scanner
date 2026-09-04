@@ -8,7 +8,20 @@
  * Script Properties required (Project Settings → Script Properties):
  *   SHARED_SECRET      — must match CONFIG.SHARED_SECRET in the PWA's index.html
  *   ANTHROPIC_API_KEY  — for badge-photo field extraction (Claude Haiku vision)
+ *
+ * Script Property that HARDENS the app (set it to switch identity enforcement on):
+ *   SESSION_SECRET     — any long random string, server-only, NEVER in the repo.
+ *                        When set, `submit` and `extract` require a session token
+ *                        the backend mints only after verifying a real @classiq.io
+ *                        Google sign-in — so the public SHARED_SECRET alone can no
+ *                        longer inject leads or burn the Anthropic budget. Leave it
+ *                        unset and the app behaves exactly as before (legacy mode).
  */
+
+var ALLOWED_DOMAIN = "classiq.io";
+var GOOGLE_CLIENT_ID = "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googleusercontent.com";
+var SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days — a booth rep signs in once, scans all week
+var PROTECTED_ACTIONS = { submit: true, extract: true };
 
 var HEADERS = [
   "First Name", "Last Name", "Title", "Company", "Email", "Phone",
@@ -61,11 +74,20 @@ function doPost(e) {
   if (req.photoBase64 && req.photoBase64.length > 3000000) {
     return json_({ ok: false, error: "photo too large" });
   }
-  var limits = { extract: 20, submit: 120, config: 60, history: 30 };
+  var limits = { extract: 20, submit: 120, config: 60, history: 30, login: 30 };
   if (!rateLimit_(req.action, limits[req.action] || 30)) {
     return json_({ ok: false, error: "rate limited — try again in a minute" });
   }
+  // Identity gate: once SESSION_SECRET is configured, the write/paid actions need
+  // a session token minted only after a verified @classiq.io Google sign-in. The
+  // public SHARED_SECRET is no longer enough on its own. Unset → legacy behaviour.
+  if (sessionSecret_() && PROTECTED_ACTIONS[req.action]) {
+    var user = verifySession_(req.session);
+    if (!user) return json_({ ok: false, error: "auth required — please sign in again" });
+    req.authEmail = user.email;
+  }
   try {
+    if (req.action === "login") return handleLogin_(req);
     if (req.action === "config") return handleConfig_(req);
     if (req.action === "extract") return handleExtract_(req);
     if (req.action === "submit") return handleSubmit_(req);
@@ -82,6 +104,83 @@ function rateLimit_(kind, maxPerMinute) {
   var n = Number(cache.get(key) || 0) + 1;
   cache.put(key, String(n), 90);
   return n <= maxPerMinute;
+}
+
+// ---------- identity: verify a Google sign-in, then mint/verify our own session ----------
+// The session token is HMAC-signed with SESSION_SECRET (a server-only Script
+// Property, never shipped in the public PWA), so nobody holding the public
+// SHARED_SECRET can forge one. It lasts SESSION_TTL_MS so a rep signs in once.
+
+function sessionSecret_() {
+  return PropertiesService.getScriptProperties().getProperty("SESSION_SECRET");
+}
+
+// login: exchange a Google ID token (the GIS `credential`) for a session token.
+function handleLogin_(req) {
+  var user = verifyGoogleToken_(req.idToken);
+  if (!user) return json_({ ok: false, error: "sign-in could not be verified" });
+  return json_({ ok: true, rep: user.name, email: user.email, session: mintSession_(user) });
+}
+
+// Validate the Google ID token via Google's tokeninfo endpoint (no crypto libs
+// needed): the audience must be our OAuth client, the email must be a verified
+// @classiq.io address, and the token must be unexpired.
+function verifyGoogleToken_(idToken) {
+  if (!idToken) return null;
+  var resp = UrlFetchApp.fetch(
+    "https://oauth2.googleapis.com/tokeninfo?id_token=" + encodeURIComponent(idToken),
+    { muteHttpExceptions: true });
+  if (resp.getResponseCode() !== 200) return null;
+  var p;
+  try { p = JSON.parse(resp.getContentText()); } catch (e) { return null; }
+  var clientId = PropertiesService.getScriptProperties().getProperty("GOOGLE_CLIENT_ID") || GOOGLE_CLIENT_ID;
+  if (clientId && p.aud !== clientId) return null;
+  if (String(p.email_verified) !== "true") return null;
+  var email = String(p.email || "").toLowerCase();
+  if (!endsWithDomain_(email)) return null;
+  if (p.exp && Number(p.exp) * 1000 < Date.now()) return null;
+  return { email: email, name: p.name || email.split("@")[0] };
+}
+
+function mintSession_(user) {
+  var secret = sessionSecret_();
+  if (!secret) return ""; // legacy mode — nothing to sign with, enforcement is off
+  var body = Utilities.base64EncodeWebSafe(JSON.stringify({
+    e: user.email, n: user.name, x: Date.now() + SESSION_TTL_MS
+  }));
+  var sig = Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(body, secret));
+  return body + "." + sig;
+}
+
+function verifySession_(session) {
+  var secret = sessionSecret_();
+  if (!secret) return null;
+  if (!session || session.indexOf(".") === -1) return null;
+  var parts = session.split(".");
+  var expected = Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(parts[0], secret));
+  if (!constEq_(parts[1], expected)) return null;
+  var payload;
+  try {
+    payload = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString());
+  } catch (e) { return null; }
+  if (!payload.x || Number(payload.x) < Date.now()) return null;
+  var email = String(payload.e || "").toLowerCase();
+  if (!endsWithDomain_(email)) return null;
+  return { email: email, name: payload.n || "" };
+}
+
+function endsWithDomain_(email) {
+  var suffix = "@" + ALLOWED_DOMAIN;
+  return email.length > suffix.length && email.slice(-suffix.length) === suffix;
+}
+
+// Constant-time string compare so a forged signature can't be recovered byte by
+// byte from response-time differences.
+function constEq_(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  var r = 0;
+  for (var i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
 }
 
 // ---------- history: per-event aggregates for the app's History/Today tabs ----------

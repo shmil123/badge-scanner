@@ -397,7 +397,7 @@ const CONFIG = {
   SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
   GOOGLE_CLIENT_ID: "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googleusercontent.com",
   ALLOWED_DOMAIN: "classiq.io",
-  APP_VERSION: "v14", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v15", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -406,6 +406,7 @@ const state = {
   event: localStorage.getItem("bs_event") || "",
   rep: localStorage.getItem("bs_rep") || "",
   repEmail: localStorage.getItem("bs_rep_email") || "",
+  session: localStorage.getItem("bs_session") || "", // identity token the backend trusts for writes
   remote: JSON.parse(localStorage.getItem("bs_remote") || '{"events":[],"reps":[]}'),
   history: JSON.parse(localStorage.getItem("bs_history") || "null"),
   draft: null,
@@ -494,9 +495,19 @@ async function api(body) {
   const resp = await fetch(CONFIG.APPS_SCRIPT_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(Object.assign({ secret: CONFIG.SHARED_SECRET }, body)),
+    body: JSON.stringify(Object.assign({ secret: CONFIG.SHARED_SECRET, session: state.session || "" }, body)),
   });
   return resp.json();
+}
+// The backend rejects writes with "auth required" once a session expires (or when
+// enforcement is first switched on). Clear the stale session so the next sign-in
+// mints a fresh one, and nudge the rep.
+function isAuthError(r) { return r && r.ok === false && /auth required|sign in/i.test(r.error || ""); }
+function handleAuthExpiry() {
+  state.session = ""; state.rep = ""; state.repEmail = "";
+  localStorage.removeItem("bs_session"); localStorage.removeItem("bs_rep"); localStorage.removeItem("bs_rep_email");
+  toast("Please sign in with your @" + CONFIG.ALLOWED_DOMAIN + " account again");
+  renderSetup();
 }
 async function refreshRemoteConfig() {
   try {
@@ -611,7 +622,7 @@ window._gisLoaded = () => {
   google.accounts.id.initialize({ client_id: CONFIG.GOOGLE_CLIENT_ID, callback: onGoogleCredential });
   google.accounts.id.renderButton($("gis-btn"), { theme: "filled_blue", size: "large", shape: "pill", width: 280 });
 };
-function onGoogleCredential(resp) {
+async function onGoogleCredential(resp) {
   let p;
   try {
     p = JSON.parse(atob(resp.credential.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
@@ -619,10 +630,24 @@ function onGoogleCredential(resp) {
   if (!p.email || !p.email.toLowerCase().endsWith("@" + CONFIG.ALLOWED_DOMAIN)) {
     toast("Please sign in with your @" + CONFIG.ALLOWED_DOMAIN + " account"); return;
   }
+  // Hand the signed Google token to the backend, which verifies it and mints a
+  // session token for writes. If the backend isn't enforcing yet (legacy), it
+  // returns no session and we fall back to the client-side identity as before.
   state.rep = p.name || p.email.split("@")[0];
   state.repEmail = p.email;
+  state.session = "";
+  try {
+    const r = await api({ action: "login", idToken: resp.credential });
+    if (r && r.ok) {
+      if (r.rep) state.rep = r.rep;
+      if (r.email) state.repEmail = r.email;
+      if (r.session) state.session = r.session;
+    }
+  } catch (e) { /* offline or legacy backend — client identity stands */ }
   localStorage.setItem("bs_rep", state.rep);
   localStorage.setItem("bs_rep_email", state.repEmail);
+  if (state.session) localStorage.setItem("bs_session", state.session);
+  else localStorage.removeItem("bs_session");
   renderSetup();
   toast("Signed in as " + state.rep + " ✓");
 }
@@ -773,6 +798,7 @@ $("photoInput").addEventListener("change", async () => {
     $("setup-status").textContent = "Reading the badge…";
     try {
       const r = await api({ action: "extract", photoBase64: await blobToBase64(blob) });
+      if (isAuthError(r)) { handleAuthExpiry(); $("setup-status").textContent = ""; return; }
       if (r.ok && r.fields.event_name) {
         // Snap the badge-read name to an existing event tab if it's close, so
         // "SC2026" off a badge maps to the pre-created "Supercomputing 2026".
@@ -1037,7 +1063,8 @@ async function syncQueue(manual) {
           }
           await DB.put(rec); // keep photoBlob so the lead card can still show it
           sent++;
-        } else { failed++; console.warn("submit rejected", r); }
+        } else if (isAuthError(r)) { handleAuthExpiry(); break; } // session lapsed — stop, re-sign-in, retry after
+        else { failed++; console.warn("submit rejected", r); }
       } catch (e) { failed++; break; } // network died — stop, retry later
     }
   } finally { state.syncing = false; }

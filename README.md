@@ -63,15 +63,20 @@ dropdown fed from the sheet's `Config` tab.
   used for model training by default.
 - HubSpot: only rows Matan explicitly ticks Push? on.
 
-**Auth model (and its honest limits):**
+**Auth model:**
 - Reps sign in with Google restricted to @classiq.io — this drives lead ownership/attribution.
-  The ID token is checked client-side only; the backend trusts the shared secret, not the token.
-- The shared secret + Apps Script URL are visible in this public repo. This is friction against
-  bots, not real secrecy. Blast radius is bounded by: per-minute rate limits on every action,
-  a payload size cap, human review before anything reaches HubSpot, and the API key/credentials
-  living only in Script Properties (never in the client).
-- Worst realistic abuse: junk rows in a human-reviewed sheet, or wasted Haiku cents up to the
-  rate cap. Rotating: change `SHARED_SECRET` in Script Properties + CONFIG in index.html.
+- **Server-side identity (when `SESSION_SECRET` is set):** the backend verifies the Google
+  sign-in itself (Google `tokeninfo` → audience + verified @classiq.io email) and mints an
+  HMAC-signed session token that every `submit`/`extract` must carry. The signing key lives only
+  in Script Properties, never in this public repo — so holding the public `SHARED_SECRET` is no
+  longer enough to write a lead or trigger a paid Haiku call. Sessions last 14 days, so a rep
+  signs in once and scans all week; when one lapses the app silently asks them to sign in again.
+- The `SHARED_SECRET` + Apps Script URL are still public (they ship in the PWA); they now act as
+  a first cheap gate in front of rate limits, not as the real authorization. Additional guards:
+  per-minute rate limits on every action, a payload size cap, human review before HubSpot, and the
+  API key living only in Script Properties.
+- Leave `SESSION_SECRET` unset and the app falls back to legacy mode (secret-only). Rotating the
+  shared secret: change `SHARED_SECRET` in Script Properties + CONFIG in index.html.
 
 **Rep etiquette:** ask the attendee before photographing their badge — same consent norm as
 the official event scanners. Badge data is business contact information collected for follow-up

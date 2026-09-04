@@ -20,12 +20,21 @@ Cost: badge-photo reading uses the cheapest model (Haiku) — expect well under 
 3. **Delete everything** in that editor, then paste the full contents of
    [`apps-script/Code.gs`](apps-script/Code.gs) from this folder. Press **⌘S** to save.
 4. Left sidebar → click the **gear icon (Project Settings)**.
-5. Scroll to **Script Properties** → **Add script property**, and add these two rows:
+5. Scroll to **Script Properties** → **Add script property**, and add these rows:
    | Property | Value |
    |---|---|
    | `SHARED_SECRET` | `1947e1791e7f84ea245333a424e8e6fb` |
    | `ANTHROPIC_API_KEY` | the `sk-ant-…` key from block A |
+   | `SESSION_SECRET` | any long random string you generate — see below |
    Click **Save script properties**.
+
+   `SESSION_SECRET` is what turns real identity enforcement **on**: once it's set, the
+   backend only accepts lead submits / badge-photo reads that carry a session token it
+   minted after verifying a real @classiq.io Google sign-in — so the shared secret in this
+   public repo can no longer be used to inject leads or burn the Anthropic budget. It never
+   leaves the server (not in the repo, not in the PWA). Generate one with, e.g.,
+   `python3 -c "import secrets; print(secrets.token_hex(32))"` and paste the output as the value.
+   Leave this row out and the app runs exactly as before (secret-only, legacy mode).
 6. Top right: **Deploy → New deployment**.
 7. Click the **gear next to "Select type"** → choose **Web app**.
 8. Fill in:
