@@ -391,7 +391,7 @@ const CONFIG = {
   SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
   GOOGLE_CLIENT_ID: "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googleusercontent.com",
   ALLOWED_DOMAIN: "classiq.io",
-  APP_VERSION: "v16", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v17", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -841,18 +841,34 @@ $("galleryInput").addEventListener("change", async () => {
 
 function downscale(file) {
   return new Promise((res) => {
-    const img = new Image();
-    img.onload = () => {
-      const max = 1280;
-      const s = Math.min(1, max / Math.max(img.width, img.height));
-      const c = document.createElement("canvas");
-      c.width = Math.round(img.width * s);
-      c.height = Math.round(img.height * s);
-      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-      c.toBlob(b => res(b || file), "image/jpeg", 0.7);
+    // <img> + drawImage ignores the EXIF orientation flag that phone cameras set,
+    // so a sideways-held shot lands rotated 90° and the vision model can't read it.
+    // createImageBitmap({imageOrientation:"from-image"}) bakes the rotation in.
+    const legacy = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 1280;
+        const s = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * s);
+        c.height = Math.round(img.height * s);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(b => res(b || file), "image/jpeg", 0.7);
+      };
+      img.onerror = () => res(file); // undecodable format — keep the original blob
+      img.src = URL.createObjectURL(file);
     };
-    img.onerror = () => res(file); // undecodable format — keep the original blob
-    img.src = URL.createObjectURL(file);
+    if (typeof createImageBitmap !== "function") return legacy();
+    createImageBitmap(file, { imageOrientation: "from-image" }).then(bmp => {
+      const max = 1280;
+      const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(bmp.width * s);
+      c.height = Math.round(bmp.height * s);
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      if (bmp.close) bmp.close();
+      c.toBlob(b => res(b || file), "image/jpeg", 0.7);
+    }).catch(legacy); // older browsers / unsupported option
   });
 }
 function blobToBase64(blob) {

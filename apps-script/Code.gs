@@ -237,7 +237,9 @@ function extractFromPhoto_(photoBase64) {
             '{"first_name":"","last_name":"","title":"","company":"","email":"","phone":"","event_name":""}. ' +
             "Use empty string for anything not visible. The largest text is usually the attendee name; " +
             "company names and job titles are usually below it. The event name is usually in the badge " +
-            "header/footer or lanyard area (e.g. \"Q2B 2026\", \"Quantum.Tech World\"). Ignore sponsor logos."
+            "header/footer or lanyard area (e.g. \"Q2B 2026\", \"Quantum.Tech World\"). Ignore sponsor logos. " +
+            "The badge may be rotated 90 or 180 degrees or photographed at an angle — read the text in " +
+            "whatever orientation it appears and still extract every field you can."
         }
       ]
     }]
