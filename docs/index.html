@@ -106,12 +106,6 @@
     mask: conic-gradient(#000 0 12%, transparent 12% 38%, #000 38% 62%, transparent 62% 88%, #000 88%);
     -webkit-mask: conic-gradient(#000 0 12%, transparent 12% 38%, #000 38% 62%, transparent 62% 88%, #000 88%);
   }
-  .reticle::after {
-    content: ""; position: absolute; left: 8%; right: 8%; height: 2px; top: 0;
-    background: linear-gradient(90deg, transparent, var(--lime), transparent);
-    animation: scanline 2.2s ease-in-out infinite; box-shadow: 0 0 12px rgba(215,247,91,.8);
-  }
-  @keyframes scanline { 0%, 100% { top: 8%; } 50% { top: 90%; } }
   #scan-hint {
     position: absolute; left: 12px; right: 12px; top: 12px; z-index: 5; display: none;
     background: rgba(25,25,25,.88); border: 1px solid rgba(215,247,91,.4); border-radius: 14px;
@@ -197,7 +191,7 @@
   <div style="flex:1; display:flex; flex-direction:column; justify-content:center; max-width:420px; width:100%; margin:0 auto">
     <div class="wordmark center">Classiq</div>
     <h1 class="center" style="margin-top:8px">Badge Scanner</h1>
-    <p class="sub center" id="setup-greet" style="margin-top:8px">Scan badges. Capture leads. Zero typing.</p>
+    <p class="sub center" id="setup-greet" style="margin-top:8px">Snap a photo of each badge. Zero typing.</p>
 
     <!-- step 1: sign in (shown only until identified — once, ever) -->
     <div id="setup-auth" style="margin-top:34px">
@@ -219,7 +213,7 @@
       </div>
       <div id="event-chips"></div>
       <p class="sub" style="font-size:12px; margin-top:8px">Tap an event above, type a new one, or tap 📷 to read it off any badge.</p>
-      <button class="primary" id="setup-save">Start scanning</button>
+      <button class="primary" id="setup-save">Start capturing</button>
       <p class="sub center" id="setup-status" style="margin-top:10px"></p>
     </div>
   </div>
@@ -251,7 +245,7 @@
       </span>
     </button>
   </div>
-  <p class="sub center" style="margin-top:10px">Aim at the badge — QR reads by itself, or press the button to photograph the badge.</p>
+  <p class="sub center" style="margin-top:10px">Point at the badge and tap the button to take a photo. That's it.</p>
   <div class="scanlinks">
     <a class="link" id="scan-manual" href="#" style="font-size:14px">Type manually</a>
     <a class="link" id="scan-upload" href="#" style="font-size:14px">Upload photo</a>
@@ -366,7 +360,7 @@
 <nav id="bottomnav">
   <button data-tab="scan" class="cur">
     <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h2l1.5-2h7L17 5h2a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>
-    Scan
+    Camera
   </button>
   <button data-tab="stats">
     <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
@@ -397,7 +391,7 @@ const CONFIG = {
   SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
   GOOGLE_CLIENT_ID: "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googleusercontent.com",
   ALLOWED_DOMAIN: "classiq.io",
-  APP_VERSION: "v15", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v16", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -559,7 +553,7 @@ function renderSetup() {
       renderSetup();
     };
   } else {
-    $("setup-greet").textContent = "Scan badges. Capture leads. Zero typing.";
+    $("setup-greet").textContent = "Snap a photo of each badge. Zero typing.";
     // no OAuth configured → the name list IS the sign-in
     if (!CONFIG.GOOGLE_CLIENT_ID) {
       $("setup-rep").style.display = "";
@@ -721,7 +715,7 @@ function onQrDecoded(raw) {
   const parsed = parseBadgePayload(raw);
   if (parsed) {
     if (navigator.vibrate) navigator.vibrate(80);
-    toast("Badge QR read ✓");
+    toast("Badge read ✓");
     openForm({ fields: parsed, mode: "qr" });
     return;
   }
@@ -731,7 +725,7 @@ function onQrDecoded(raw) {
   state.pendingBadgeId = raw.slice(0, 120);
   if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
   const hint = $("scan-hint");
-  hint.textContent = "This QR has no contact info — press the button to photograph the badge instead 👇";
+  hint.textContent = "Tap the button to take a photo of the badge 👇";
   hint.style.display = "";
 }
 
