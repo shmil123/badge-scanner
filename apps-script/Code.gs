@@ -28,7 +28,8 @@ var HEADERS = [
   "LinkedIn URL", "Event", "Captured By", "Captured At", "Source",
   "Rep Note", "Temperature", "Follow-up",
   "Push?", "HubSpot Status", "Badge Photo",
-  "Lead Type", "Country", "State", "Company URL"
+  "Lead Type", "Country", "State", "Company URL",
+  "Assigned lead"
 ];
 var PUSH_COL = 15; // "Push?" checkbox column (O) — unchanged; new cols appended at R-U
 var RESERVED_TABS = ["TEMPLATE", "Config", "_sync"];
@@ -323,7 +324,8 @@ function handleSubmit_(req) {
       composeRepNote_(lead, fields),
       lead.temperature || "", lead.followUp || "",
       false, "", photoUrl,
-      lead.leadType || "", "", "", "" // Lead Type (rep); Country/State/Company URL blank (enrichment fills at push)
+      lead.leadType || "", "", "", "", // Lead Type (rep); Country/State/Company URL blank (enrichment fills at push)
+      lead.assignTo || "" // Assigned lead (who follows up) — defaults to the capturing rep in the app
     ]]);
     SpreadsheetApp.flush(); // commit the lead row BEFORE recording it in the ledger or reporting ok
     upsertLedger_(sync, req.uuid, ws.getName(), row, lead.repEmail || "");
@@ -361,6 +363,8 @@ function updateRow_(ss, existing, lead, fields) {
   ]]);
   // Lead Type (col 18) — rep-editable; Country/State/Company URL (19-21) are enrichment-owned, never touched here.
   ws.getRange(row, 18).setValue(lead.leadType || cur[17]);
+  // Assigned lead (col 22) — who follows up; non-empty incoming wins, never blanks an existing value.
+  ws.getRange(row, 22).setValue(lead.assignTo || cur[21]);
   SpreadsheetApp.flush(); // commit the update before reporting ok
   return json_({ ok: true, row: row, event: existing.tab, updated: true, fields: merged });
 }
