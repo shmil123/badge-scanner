@@ -428,7 +428,7 @@ const CONFIG = {
   SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
   GOOGLE_CLIENT_ID: "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googleusercontent.com",
   ALLOWED_DOMAIN: "classiq.io",
-  APP_VERSION: "v19", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v20", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -447,6 +447,7 @@ const state = {
   qrMuted: false,           // true after an info-less QR: stop decoding, photo only
   pendingBadgeId: "",
   syncing: false,
+  loginPromise: null,       // in-flight background session mint; submits wait on it
   tab: "scan",
 };
 const todayStr = () => new Date().toDateString();
@@ -653,26 +654,30 @@ async function onGoogleCredential(resp) {
   if (!p.email || !p.email.toLowerCase().endsWith("@" + CONFIG.ALLOWED_DOMAIN)) {
     toast("Please sign in with your @" + CONFIG.ALLOWED_DOMAIN + " account"); return;
   }
-  // Hand the signed Google token to the backend, which verifies it and mints a
-  // session token for writes. If the backend isn't enforcing yet (legacy), it
-  // returns no session and we fall back to the client-side identity as before.
+  // The Google token is already verified in the browser (signature aside, the
+  // @classiq.io check above), so sign the rep in INSTANTLY — no waiting on the
+  // network. The backend still verifies the token and mints a signed session in
+  // the BACKGROUND (that call can take 20-30s on cold Apps Script / slow venue
+  // wifi). Writes wait on that session via state.loginPromise if it isn't ready.
   state.rep = p.name || p.email.split("@")[0];
   state.repEmail = p.email;
   state.session = "";
-  try {
-    const r = await api({ action: "login", idToken: resp.credential });
-    if (r && r.ok) {
-      if (r.rep) state.rep = r.rep;
-      if (r.email) state.repEmail = r.email;
-      if (r.session) state.session = r.session;
-    }
-  } catch (e) { /* offline or legacy backend — client identity stands */ }
   localStorage.setItem("bs_rep", state.rep);
   localStorage.setItem("bs_rep_email", state.repEmail);
-  if (state.session) localStorage.setItem("bs_session", state.session);
-  else localStorage.removeItem("bs_session");
+  localStorage.removeItem("bs_session");
   renderSetup();
   toast("Signed in as " + state.rep + " ✓");
+  state.loginPromise = api({ action: "login", idToken: resp.credential })
+    .then((r) => {
+      if (r && r.ok) {
+        if (r.rep) { state.rep = r.rep; localStorage.setItem("bs_rep", r.rep); }
+        if (r.email) { state.repEmail = r.email; localStorage.setItem("bs_rep_email", r.email); }
+        if (r.session) { state.session = r.session; localStorage.setItem("bs_session", r.session); }
+        if ($("scr-setup").classList.contains("active")) renderSetup();
+      }
+    })
+    .catch(() => { /* offline or legacy backend — client identity stands */ })
+    .finally(() => { state.loginPromise = null; });
 }
 
 // ---------------- unified camera: QR auto-read + photo shutter ----------------
@@ -1118,6 +1123,7 @@ $("hist-refresh").onclick = (e) => { e.preventDefault(); $("hist-list").innerHTM
 async function syncQueue(manual) {
   if (state.syncing || !CONFIG.APPS_SCRIPT_URL) return;
   if (!navigator.onLine) { if (manual) toast("No internet — will sync when you're back online"); return; }
+  if (state.loginPromise) { try { await state.loginPromise; } catch (e) { /* proceed; may hit auth retry */ } }
   state.syncing = true;
   let sent = 0, failed = 0;
   try {
