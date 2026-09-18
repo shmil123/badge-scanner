@@ -23,15 +23,16 @@ var GOOGLE_CLIENT_ID = "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googl
 var SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days — a booth rep signs in once, scans all week
 var PROTECTED_ACTIONS = { submit: true, extract: true };
 
+// 17-column schema (Sep 2026): Source, Follow-up, Push?, HubSpot Status and Lead
+// Type were retired when capture moved to a Salesforce-bound flow. Columns are
+// written by position, so this array is the single source of truth — keep the
+// sheet tabs and setup_sheet.py in lockstep with it.
 var HEADERS = [
   "First Name", "Last Name", "Title", "Company", "Email", "Phone",
-  "LinkedIn URL", "Event", "Captured By", "Captured At", "Source",
-  "Rep Note", "Temperature", "Follow-up",
-  "Push?", "HubSpot Status", "Badge Photo",
-  "Lead Type", "Country", "State", "Company URL",
-  "Assigned lead"
+  "LinkedIn URL", "Event", "Captured By", "Captured At",
+  "Rep Note", "Temperature", "Badge Photo",
+  "Country", "State", "Company URL", "Assign lead to"
 ];
-var PUSH_COL = 15; // "Push?" checkbox column (O) — unchanged; new cols appended at R-U
 var RESERVED_TABS = ["TEMPLATE", "Config", "_sync"];
 var HAIKU_MODEL = "claude-haiku-4-5-20251001";
 var PHOTO_FOLDER = "Badge Scanner Photos";
@@ -194,20 +195,19 @@ function handleHistory_(req) {
     var name = ws.getName();
     if (RESERVED_TABS.indexOf(name) !== -1) return;
     var vals = ws.getDataRange().getValues();
-    var total = 0, hot = 0, mine = 0, pushed = 0;
+    var total = 0, hot = 0, mine = 0;
     for (var i = 1; i < vals.length; i++) {
       var r = vals[i];
       var has = false;
-      for (var j = 0; j < Math.min(r.length, 14); j++) {
+      for (var j = 0; j < r.length; j++) {
         if (r[j] !== "" && r[j] !== false) { has = true; break; }
       }
       if (!has) continue;
       total++;
-      if (String(r[12]) === "Hot") hot++;                 // Temperature (M)
-      if (req.rep && String(r[8]) === req.rep) mine++;    // Captured By (I)
-      if (r[15]) pushed++;                                // HubSpot Status (P)
+      if (String(r[11]) === "Hot") hot++;                 // Temperature (col 12)
+      if (req.rep && String(r[8]) === req.rep) mine++;    // Captured By (col 9)
     }
-    out.push({ event: name, total: total, hot: hot, mine: mine, pushed: pushed });
+    out.push({ event: name, total: total, hot: hot, mine: mine, pushed: 0 });
   });
   return json_({ ok: true, events: out });
 }
@@ -320,12 +320,11 @@ function handleSubmit_(req) {
       fields.first_name || "", fields.last_name || "", fields.title || "",
       fields.company || "", fields.email || "", fields.phone || "",
       fields.linkedin || "", ws.getName(), lead.rep || "",
-      lead.capturedAt || new Date().toISOString(), "badge",
+      lead.capturedAt || new Date().toISOString(),
       composeRepNote_(lead, fields),
-      lead.temperature || "", lead.followUp || "",
-      false, "", photoUrl,
-      lead.leadType || "", "", "", "", // Lead Type (rep); Country/State/Company URL blank (enrichment fills at push)
-      lead.assignTo || "" // Assigned lead (who follows up) — defaults to the capturing rep in the app
+      lead.temperature || "", photoUrl,
+      "", "", "", // Country / State / Company URL — enrichment fills these later
+      lead.assignTo || "" // Assign lead to — who follows up; defaults to the capturing rep in the app
     ]]);
     SpreadsheetApp.flush(); // commit the lead row BEFORE recording it in the ledger or reporting ok
     upsertLedger_(sync, req.uuid, ws.getName(), row, lead.repEmail || "");
@@ -336,8 +335,8 @@ function handleSubmit_(req) {
 }
 
 // Later edits from the app update the same row. Non-empty incoming values win;
-// empty incoming values never blank out data already in the sheet. Review-owned
-// columns (Push?, HubSpot Status, Badge Photo) are untouched.
+// empty incoming values never blank out data already in the sheet. The Badge
+// Photo and Country/State/Company URL columns are left untouched here.
 // Returns null when the ledger row no longer holds this lead (deleted/shifted
 // by manual sheet cleanup) so the caller recreates it instead.
 function updateRow_(ss, existing, lead, fields) {
@@ -347,7 +346,7 @@ function updateRow_(ss, existing, lead, fields) {
   var row = existing.row;
   var cur = ws.getRange(row, 1, 1, HEADERS.length).getValues()[0];
   var rowEmpty = cur.every(function (c) { return c === "" || c === false; });
-  if (rowEmpty || !sameCapture_(cur[9], lead.capturedAt)) return null;
+  if (rowEmpty || !sameCapture_(cur[9], lead.capturedAt)) return null; // Captured At = col 10
   var merged = {
     first_name: fields.first_name || cur[0], last_name: fields.last_name || cur[1],
     title: fields.title || cur[2], company: fields.company || cur[3],
@@ -358,13 +357,12 @@ function updateRow_(ss, existing, lead, fields) {
     merged.first_name, merged.last_name, merged.title,
     merged.company, merged.email, merged.phone, merged.linkedin
   ]]);
-  ws.getRange(row, 12, 1, 3).setValues([[
-    composeRepNote_(lead, fields), lead.temperature || cur[12], lead.followUp || cur[13]
+  // Rep Note = col 11, Temperature = col 12.
+  ws.getRange(row, 11, 1, 2).setValues([[
+    composeRepNote_(lead, fields), lead.temperature || cur[11]
   ]]);
-  // Lead Type (col 18) — rep-editable; Country/State/Company URL (19-21) are enrichment-owned, never touched here.
-  ws.getRange(row, 18).setValue(lead.leadType || cur[17]);
-  // Assigned lead (col 22) — who follows up; non-empty incoming wins, never blanks an existing value.
-  ws.getRange(row, 22).setValue(lead.assignTo || cur[21]);
+  // Assign lead to = col 17 — non-empty incoming wins, never blanks an existing value.
+  ws.getRange(row, 17).setValue(lead.assignTo || cur[16]);
   SpreadsheetApp.flush(); // commit the update before reporting ok
   return json_({ ok: true, row: row, event: existing.tab, updated: true, fields: merged });
 }
@@ -439,33 +437,16 @@ function ensureEventTab_(ss, name) {
   }
   var fresh = ss.insertSheet(name);
   fresh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]).setFontWeight("bold");
-  fresh.getRange(2, PUSH_COL, 199, 1) // Push? checkboxes, rows 2-200 like setup_sheet.py
-    .setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
   fresh.setFrozenRows(1);
   return fresh;
 }
 
-// Upgrade tabs from older layouts to the 21-column schema: drop the legacy
-// ICP Fit / Why Relevant pair, insert Temperature/Follow-up after Rep Note
-// (checkbox validation shifts along automatically), then ensure the trailing
-// headers (Badge Photo + Lead Type/Country/State/Company URL) exist at cols 17-21.
-// Appending only — never shifts Push? (O) or the Temperature/Follow-up indices.
-// Safe to call repeatedly.
+// Ensure the tab's header row matches the 17-column schema. Header-only and
+// idempotent: it never inserts or deletes columns (the one-time reshaping of old
+// tabs is done deliberately outside the app), so it can't misalign existing rows.
 function migrateTab_(ws) {
-  var head = ws.getRange(1, 1, 1, Math.max(ws.getLastColumn(), 1)).getValues()[0];
-  var icp = head.indexOf("ICP Fit");
-  if (icp !== -1) {
-    ws.deleteColumns(icp + 1, 2); // ICP Fit + adjacent Why Relevant
-    head = ws.getRange(1, 1, 1, ws.getLastColumn()).getValues()[0];
-  }
-  if (head[12] !== "Temperature") {
-    ws.insertColumnsAfter(12, 2);
-    ws.getRange(1, 13, 1, 2).setValues([["Temperature", "Follow-up"]]).setFontWeight("bold");
-    head = ws.getRange(1, 1, 1, ws.getLastColumn()).getValues()[0];
-  }
-  // Ensure every trailing header (cols 17-21) is present & correct — sets any
-  // that are missing/mismatched, extending the sheet as needed. Idempotent.
-  for (var c = 17; c <= HEADERS.length; c++) {
+  var head = ws.getRange(1, 1, 1, HEADERS.length).getValues()[0];
+  for (var c = 1; c <= HEADERS.length; c++) {
     if (head[c - 1] !== HEADERS[c - 1]) {
       ws.getRange(1, c).setValue(HEADERS[c - 1]).setFontWeight("bold");
     }

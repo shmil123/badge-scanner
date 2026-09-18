@@ -176,6 +176,36 @@
   }
   #bottomnav button svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   #bottomnav button.cur { color: var(--lime); }
+  /* ===== v18 redesign: bigger, uncrowded, senior-friendly ===== */
+  .scan-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
+  .evtbadge { display:flex; flex-direction:column; line-height:1.15; min-width:0; }
+  .evtbadge .evt-label { font-size:10px; font-weight:800; letter-spacing:.16em; color:var(--dim); text-transform:uppercase; }
+  .evtbadge .evt-name { font-size:22px; font-weight:900; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .evtbadge .evt-rep { font-size:13px; color:var(--muted); margin-top:2px; }
+  .chip-change { border:1px solid var(--line); background:rgba(255,255,255,.03); color:var(--lime);
+    font-weight:800; font-size:15px; padding:12px 18px; border-radius:999px; min-height:48px; white-space:nowrap; }
+  .chip-change:active { transform:scale(.97); }
+  .bigbtn { width:100%; display:flex; align-items:center; justify-content:center; gap:10px;
+    min-height:66px; border-radius:20px; font-size:19px; font-weight:900; margin-top:12px; border:none;
+    transition:transform .1s; }
+  .bigbtn .ic { font-size:24px; }
+  .bigbtn:active { transform:scale(.98); }
+  .bigbtn.primary { background:var(--lime); color:var(--lime-ink); box-shadow:0 8px 26px -8px rgba(215,247,91,.5); }
+  .bigbtn.ghost { background:rgba(255,255,255,.04); color:var(--text); border:1.5px solid var(--line); }
+  .linkbtn { display:block; width:100%; text-align:center; background:none; border:none; color:var(--dim);
+    font-size:15px; font-weight:700; padding:14px; margin-top:6px; text-decoration:underline; }
+  .scan-hint-line { text-align:center; color:var(--muted); font-size:15px; margin:12px 2px 2px; line-height:1.45; }
+  #scr-scan #videoWrap { flex:0 1 auto; max-height:44vh; min-height:200px; }
+  .signout-btn { width:100%; padding:15px; border-radius:999px; border:1.5px solid rgba(244,55,100,.4);
+    background:rgba(244,55,100,.08); color:#ff9db2; font-size:16px; font-weight:800; margin-top:18px; }
+  .signout-btn:active { transform:scale(.98); }
+  /* bigger event chips + nav for older users */
+  #event-chips button { padding:14px 18px; font-size:16px; min-height:50px; }
+  #bottomnav button { font-size:12px; }
+  #bottomnav button svg { width:26px; height:26px; }
+  #previewflag { position:fixed; left:10px; bottom:calc(var(--nav-h) + 12px + env(safe-area-inset-bottom));
+    z-index:70; background:rgba(244,55,100,.9); color:#fff; font-size:11px; font-weight:800; letter-spacing:.06em;
+    padding:5px 10px; border-radius:999px; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -193,13 +223,10 @@
     <h1 class="center" style="margin-top:8px">Badge Scanner</h1>
     <p class="sub center" id="setup-greet" style="margin-top:8px">Snap a photo of each badge. Zero typing.</p>
 
-    <!-- step 1: sign in (shown only until identified — once, ever) -->
+    <!-- step 1: sign in — Google (@classiq.io) only -->
     <div id="setup-auth" style="margin-top:34px">
       <div id="gis-btn" style="display:flex; justify-content:center"></div>
-      <select id="setup-rep" style="display:none; margin-top:14px"></select>
-      <p class="sub center" style="margin-top:14px">
-        <a class="link" id="rep-fallback" href="#" style="font-size:13px; color:var(--dim)">Can't sign in? Pick your name from a list</a>
-      </p>
+      <p class="sub center" style="margin-top:16px; font-size:13px; color:var(--dim)">Sign in with your Classiq Google account to continue.</p>
     </div>
 
     <!-- step 2: event (the only daily decision) -->
@@ -215,6 +242,7 @@
       <p class="sub" style="font-size:12px; margin-top:8px">Tap an event above, type a new one, or tap 📷 to read it off any badge.</p>
       <button class="primary" id="setup-save">Start capturing</button>
       <p class="sub center" id="setup-status" style="margin-top:10px"></p>
+      <button class="signout-btn" id="setup-signout">Sign out</button>
     </div>
   </div>
   <p class="sub center" style="margin-top:20px">
@@ -225,34 +253,33 @@
 
 <!-- ============ SCAN (default tab) ============ -->
 <div class="screen with-nav" id="scr-scan">
-  <div class="topbar" style="margin-bottom:12px">
-    <div>
-      <div class="wordmark">Classiq</div>
-      <div class="evt" id="scan-evt" style="margin-top:4px"></div>
+  <div class="scan-top">
+    <div class="evtbadge">
+      <span class="evt-label">You're at</span>
+      <span class="evt-name" id="scan-event-name">—</span>
+      <span class="evt-rep" id="scan-evt"></span>
     </div>
-    <a class="link" id="scan-settings" href="#" style="font-size:13px">Change</a>
+    <button class="chip-change" id="scan-settings">Change</button>
   </div>
   <div id="videoWrap">
     <video id="video" playsinline muted></video>
     <div class="reticle"></div>
     <div id="scan-hint"></div>
-    <button id="shutter" aria-label="Take photo"></button>
     <button id="cam-start">
-      <span style="font-size:34px">📷</span>
+      <span style="font-size:38px">📷</span>
       <span>Tap to start the camera</span>
       <span style="font-size:12px; font-weight:400; color:var(--muted); max-width:280px; line-height:1.5">
         Tip: to skip this next time, tap <b>aA</b> in the address bar → Website Settings → Camera → <b>Allow</b>
       </span>
     </button>
   </div>
-  <p class="sub center" style="margin-top:10px">Point at the badge and tap the button to take a photo. That's it.</p>
-  <div class="scanlinks">
-    <a class="link" id="scan-manual" href="#" style="font-size:14px">Type manually</a>
-    <a class="link" id="scan-upload" href="#" style="font-size:14px">Upload photo</a>
-  </div>
+  <p class="scan-hint-line">Point at the badge — it reads by itself.<br>No code on the badge? Take a photo.</p>
+  <button class="bigbtn primary" id="btn-takephoto"><span class="ic">📷</span> Take a photo</button>
+  <button class="bigbtn ghost" id="btn-upload"><span class="ic">🖼️</span> Upload photo(s)</button>
+  <button class="linkbtn" id="scan-manual">Type it in instead</button>
   <div class="card" id="scan-camhelp" style="display:none; margin-top:12px">
     Camera is blocked. On iPhone: aA menu → Website Settings → Camera → Allow, then reload.
-    Meanwhile use <b>Type manually</b> or <b>Upload photo</b> above.
+    Meanwhile use <b>Upload photo(s)</b> or <b>Type it in instead</b> above.
   </div>
 </div>
 
@@ -342,14 +369,9 @@
       <button data-v="">Regular</button>
       <button data-v="Hot">🔥 Hot</button>
     </div>
-    <label>Lead type</label>
-    <select id="f-leadtype">
-      <option value="">— select —</option>
-      <option value="Partnership">Partnership</option>
-      <option value="Sales">Sales</option>
-      <option value="Academia">Academia</option>
-      <option value="Other">Other</option>
-    </select>
+    <label>Assign lead to</label>
+    <input id="f-assign" list="assign-list" autocomplete="off" placeholder="Who follows up? (defaults to you)">
+    <datalist id="assign-list"></datalist>
     <label>Notes — required</label>
     <textarea id="f-note" placeholder="What did they ask about? What's next?"></textarea>
   </div>
@@ -391,7 +413,7 @@ const CONFIG = {
   SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
   GOOGLE_CLIENT_ID: "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googleusercontent.com",
   ALLOWED_DOMAIN: "classiq.io",
-  APP_VERSION: "v17", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v18", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -517,8 +539,6 @@ async function refreshRemoteConfig() {
 function fillSetup() {
   const urlEvent = new URLSearchParams(location.search).get("event");
   $("event-list").innerHTML = state.remote.events.map(e => `<option>${esc(e)}</option>`).join("");
-  $("setup-rep").innerHTML = "<option value=''>— pick your name —</option>" +
-    state.remote.reps.map(r => `<option>${esc(r)}</option>`).join("");
   $("setup-event").value = state.event || urlEvent || "";
   renderEventChips();
   renderSetup();
@@ -553,20 +573,14 @@ function renderSetup() {
       renderSetup();
     };
   } else {
-    $("setup-greet").textContent = "Snap a photo of each badge. Zero typing.";
-    // no OAuth configured → the name list IS the sign-in
-    if (!CONFIG.GOOGLE_CLIENT_ID) {
-      $("setup-rep").style.display = "";
-      $("rep-fallback").parentElement.style.display = "none";
-    }
+    $("setup-greet").textContent = "Take a photo of each badge. Zero typing.";
   }
 }
-$("rep-fallback").onclick = (e) => { e.preventDefault(); $("setup-rep").style.display = ""; };
-$("setup-rep").onchange = () => {
-  const v = $("setup-rep").value;
-  if (!v) return;
-  state.rep = v; state.repEmail = "";
-  localStorage.setItem("bs_rep", v);
+$("setup-signout").onclick = (e) => {
+  e.preventDefault();
+  state.rep = ""; state.repEmail = ""; state.session = "";
+  localStorage.removeItem("bs_rep"); localStorage.removeItem("bs_rep_email"); localStorage.removeItem("bs_session");
+  toast("Signed out");
   renderSetup();
 };
 $("setup-reset").onclick = async (e) => {
@@ -589,7 +603,7 @@ $("setup-event-badge").onclick = () => { state.photoTarget = "event"; $("photoIn
 $("setup-save").onclick = () => {
   let ev = $("setup-event").value.trim().replace(/[\[\]\*\/\\\?:]/g, " ").replace(/\s+/g, " ");
   const rp = state.rep;
-  if (!rp) { toast(CONFIG.GOOGLE_CLIENT_ID ? "Sign in with your Classiq Google account" : "Pick your name"); renderSetup(); return; }
+  if (!rp) { toast("Sign in with your Classiq Google account"); renderSetup(); return; }
   if (!ev) { toast("Enter the event name (or tap 📷 to read it off a badge)"); $("setup-event").focus(); return; }
   // typo protection: snap to an existing event ("QB2 tokyo" → "Q2B Tokyo")
   const match = state.remote.events.find(e => sameEvent(e, ev));
@@ -659,7 +673,8 @@ async function canAutoStartCamera() {
   }
 }
 async function startCamera(userGesture) {
-  $("scan-evt").innerHTML = `<b>${esc(state.event)}</b> · ${esc(state.rep)}`;
+  $("scan-event-name").textContent = state.event || "—";
+  $("scan-evt").textContent = state.rep;
   $("scan-camhelp").style.display = "none";
   $("scan-hint").style.display = "none";
   $("cam-start").style.display = "none";
@@ -709,7 +724,7 @@ function stopCamera() {
 $("cam-start").onclick = () => startCamera(true);
 $("scan-settings").onclick = (e) => { e.preventDefault(); fillSetup(); show("scr-setup"); };
 $("scan-manual").onclick = (e) => { e.preventDefault(); openForm({ mode: "manual" }); };
-$("scan-upload").onclick = (e) => { e.preventDefault(); stopCamera(); $("galleryInput").click(); };
+$("btn-upload").onclick = (e) => { e.preventDefault(); stopCamera(); $("galleryInput").click(); };
 
 function onQrDecoded(raw) {
   const parsed = parseBadgePayload(raw);
@@ -729,8 +744,8 @@ function onQrDecoded(raw) {
   hint.style.display = "";
 }
 
-// Photo shutter: grab a full-res frame from the live stream
-$("shutter").onclick = () => {
+// Take-photo button: grab a full-res frame from the live stream (or native camera if not started)
+$("btn-takephoto").onclick = () => {
   const video = $("video");
   if (!video.videoWidth) { state.photoTarget = "lead"; $("photoInput").click(); return; }
   const max = 1280;
@@ -829,7 +844,7 @@ $("galleryInput").addEventListener("change", async () => {
       photoBlob: blob,
       lead: {
         event: state.event, rep: state.rep, repEmail: state.repEmail,
-        fields: {}, temperature: "", followUp: "", leadType: "", note: "", badgeId: "",
+        fields: {}, temperature: "", followUp: "", leadType: "", assignTo: state.rep, note: "", badgeId: "",
         capturedAt: new Date().toISOString(),
       },
     });
@@ -885,8 +900,12 @@ function blobToBase64(blob) {
 function openForm(draft) {
   state.draft = draft || {};
   const mode = state.draft.mode || "manual";
-  ["f-first","f-last","f-title","f-company","f-email","f-phone","f-note","f-leadtype"].forEach(id => $(id).value = "");
+  ["f-first","f-last","f-title","f-company","f-email","f-phone","f-note"].forEach(id => $(id).value = "");
   setHot("");
+  // Assign to: quick-pick from reps + teams, defaulting to the logged-in rep (their leads are theirs).
+  const teams = ["Partnership", "Sales", "APAC", "EMEA", "Americas"];
+  $("assign-list").innerHTML = [...state.remote.reps, ...teams].map(x => `<option>${esc(x)}</option>`).join("");
+  $("f-assign").value = state.rep || "";
   $("form-title").textContent = mode === "edit" ? "Edit lead" : "New lead";
   $("form-save").textContent = mode === "edit" ? "Save changes" : "Save lead";
   $("form-photonote").style.display = mode === "photo" ? "" : "none";
@@ -900,7 +919,7 @@ function openForm(draft) {
   if (mode === "edit") {
     setHot(state.draft.temperature === "Hot" ? "Hot" : "");
     $("f-note").value = state.draft.note || "";
-    $("f-leadtype").value = state.draft.leadType || "";
+    $("f-assign").value = state.draft.assignTo || state.rep || "";
   }
   show("scr-form");
 }
@@ -916,7 +935,7 @@ async function editLead(uuid) {
     mode: "edit", editUuid: uuid,
     fields: rec.lead.fields, photoBlob: rec.photoBlob,
     temperature: rec.lead.temperature, note: rec.lead.note,
-    leadType: rec.lead.leadType,
+    leadType: rec.lead.leadType, assignTo: rec.lead.assignTo,
     badgeId: rec.lead.badgeId, linkedin: (rec.lead.fields || {}).linkedin,
     createdAt: rec.createdAt, capturedAt: rec.lead.capturedAt,
   });
@@ -959,7 +978,7 @@ $("form-save").onclick = async () => {
     photoBlob: state.draft.photoBlob || null,
     lead: {
       event: state.event, rep: state.rep, repEmail: state.repEmail, fields,
-      temperature: hotSel, followUp: "", leadType: $("f-leadtype").value,
+      temperature: hotSel, followUp: "", leadType: "", assignTo: $("f-assign").value.trim(),
       note, badgeId: state.draft.badgeId || "",
       capturedAt: state.draft.capturedAt || new Date().toISOString(),
     },
@@ -1040,7 +1059,7 @@ function paintHistory() {
     <div class="histrow">
       <div>
         <div class="who">${esc(e.event)}${e.event === state.event ? ' <span class="pill synced">current</span>' : ""}</div>
-        <div class="nums"><span><b>${e.total}</b> leads</span><span><b class="hotn">${e.hot}</b> hot</span><span><b>${e.mine}</b> yours</span><span><b>${e.pushed}</b> in HubSpot</span></div>
+        <div class="nums"><span><b>${e.total}</b> leads</span><span><b class="hotn">${e.hot}</b> hot</span><span><b>${e.mine}</b> yours</span></div>
       </div>
     </div>`).join("") || `<p class="sub">No events yet.</p>`;
 }
