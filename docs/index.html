@@ -334,6 +334,7 @@
     </div>
     <a class="link" id="leads-add" href="#">+ Add</a>
   </div>
+  <button class="primary" id="leads-sync" style="margin-top:0; margin-bottom:14px; display:none"></button>
   <div class="card"><div id="leads-list"></div></div>
 </div>
 
@@ -430,7 +431,7 @@ const CONFIG = {
   ALLOWED_DOMAIN: "classiq.io",
   // Completed events — hidden from the rep event picker (their data stays in the sheet).
   HIDDEN_EVENTS: ["Q2B Copenhagen", "Black Hat Las Vegas", "Quantum.Tech World"],
-  APP_VERSION: "v22", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v23", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -1096,8 +1097,20 @@ async function renderLeads() {
     </div>`;
   }).join("") || `<p class="sub" style="padding:10px 0">No leads on this phone yet — go scan!</p>`;
   document.querySelectorAll("#leads-list .leadrow").forEach(el => el.onclick = () => editLead(el.dataset.uuid));
+  // Sync button: prominent + actionable when leads are waiting, reassuring when all done.
+  const pending = leads.filter(l => l.status === "pending").length;
+  const btn = $("leads-sync");
+  btn.style.display = leads.length ? "" : "none";
+  if (state.syncing) {
+    btn.textContent = "Syncing…"; btn.disabled = true; btn.className = "primary";
+  } else if (pending > 0) {
+    btn.textContent = `Sync ${pending} pending lead${pending > 1 ? "s" : ""}`; btn.disabled = false; btn.className = "primary";
+  } else {
+    btn.textContent = "All leads synced ✓"; btn.disabled = true; btn.className = "secondary";
+  }
 }
 $("leads-add").onclick = (e) => { e.preventDefault(); openForm({ mode: "manual" }); };
+$("leads-sync").onclick = () => { if (!state.syncing) syncQueue(true); };
 
 // ---------------- History (all events, from the sheet) ----------------
 async function renderHistory(force) {
