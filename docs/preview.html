@@ -376,7 +376,8 @@
     </div>
     <label>Assign lead to</label>
     <div class="assign-chips" id="assign-chips"></div>
-    <input id="f-assign" list="assign-list" autocomplete="off" placeholder="Search a name…" style="display:none; margin-top:8px">
+    <input id="f-assign" list="assign-list" autocomplete="off" placeholder="First name is enough" style="display:none; margin-top:8px">
+    <p class="sub" id="assign-hint" style="display:none; margin-top:6px">Just the first name is enough — pick from the list or type it.</p>
     <datalist id="assign-list"></datalist>
     <label>Notes — required</label>
     <textarea id="f-note" placeholder="What did they ask about? What's next?"></textarea>
@@ -928,19 +929,14 @@ function openForm(draft) {
 }
 // ---- "Assign lead to" chips: Me (default) / teams / Someone else — one tap, no deleting ----
 var assignSel = { key: "me", val: "" };
-var ASSIGN_TEAMS = ["Partnership", "Sales", "APAC", "EMEA", "Americas"];
 function buildAssign(defaultVal) {
   defaultVal = String(defaultVal || "").trim();
   var me = state.rep || "";
   var meFirst = me.split(" ")[0] || "Me";
-  if (!defaultVal || defaultVal === me) assignSel = { key: "me", val: me };
-  else if (ASSIGN_TEAMS.indexOf(defaultVal) !== -1) assignSel = { key: defaultVal, val: defaultVal };
-  else assignSel = { key: "other", val: defaultVal };
+  assignSel = (!defaultVal || defaultVal === me) ? { key: "me", val: me } : { key: "other", val: defaultVal };
   $("assign-list").innerHTML = state.remote.reps.map(function (r) { return "<option>" + esc(r) + "</option>"; }).join("");
   $("f-assign").value = assignSel.key === "other" ? assignSel.val : "";
-  var chips = [{ key: "me", label: "Me (" + esc(meFirst) + ")" }]
-    .concat(ASSIGN_TEAMS.map(function (t) { return { key: t, label: esc(t) }; }))
-    .concat([{ key: "other", label: "Someone else…" }]);
+  var chips = [{ key: "me", label: "Me (" + esc(meFirst) + ")" }, { key: "other", label: "Assign to someone else" }];
   $("assign-chips").innerHTML = chips.map(function (c) {
     return '<button type="button" data-key="' + esc(c.key) + '">' + c.label + "</button>";
   }).join("");
@@ -951,8 +947,7 @@ function buildAssign(defaultVal) {
 }
 function pickAssign(key) {
   if (key === "other") assignSel = { key: "other", val: $("f-assign").value.trim() };
-  else if (key === "me") assignSel = { key: "me", val: state.rep || "" };
-  else assignSel = { key: key, val: key };
+  else assignSel = { key: "me", val: state.rep || "" };
   renderAssign();
   if (key === "other") $("f-assign").focus();
 }
@@ -960,7 +955,9 @@ function renderAssign() {
   Array.prototype.forEach.call(document.querySelectorAll("#assign-chips button"), function (b) {
     b.classList.toggle("sel", b.dataset.key === assignSel.key);
   });
-  $("f-assign").style.display = assignSel.key === "other" ? "" : "none";
+  var other = assignSel.key === "other";
+  $("f-assign").style.display = other ? "" : "none";
+  $("assign-hint").style.display = other ? "" : "none";
 }
 function readAssign() {
   if (assignSel.key === "other") return $("f-assign").value.trim();
