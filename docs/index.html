@@ -428,7 +428,9 @@ const CONFIG = {
   SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
   GOOGLE_CLIENT_ID: "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googleusercontent.com",
   ALLOWED_DOMAIN: "classiq.io",
-  APP_VERSION: "v20", // keep in sync with CACHE_VERSION in sw.js
+  // Completed events — hidden from the rep event picker (their data stays in the sheet).
+  HIDDEN_EVENTS: ["Q2B Copenhagen", "Black Hat Las Vegas", "Quantum.Tech World"],
+  APP_VERSION: "v21", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -552,16 +554,22 @@ async function refreshRemoteConfig() {
 }
 
 // ---------------- daily check-in (progressive: identity once, then event) ----------------
+// Events shown to reps = backend list minus completed ones (CONFIG.HIDDEN_EVENTS).
+function visibleEvents() {
+  const norm = s => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const hidden = (CONFIG.HIDDEN_EVENTS || []).map(norm);
+  return (state.remote.events || []).filter(e => hidden.indexOf(norm(e)) === -1);
+}
 function fillSetup() {
   const urlEvent = new URLSearchParams(location.search).get("event");
-  $("event-list").innerHTML = state.remote.events.map(e => `<option>${esc(e)}</option>`).join("");
+  $("event-list").innerHTML = visibleEvents().map(e => `<option>${esc(e)}</option>`).join("");
   $("setup-event").value = state.event || urlEvent || "";
   renderEventChips();
   renderSetup();
   $("setup-status").textContent = "";
 }
 function renderEventChips() {
-  const evs = state.remote.events.slice(0, 8);
+  const evs = visibleEvents().slice(0, 8);
   $("event-chips").innerHTML = evs.map(e => `<button type="button" data-ev="${esc(e)}">${esc(e)}</button>`).join("");
   const mark = () => document.querySelectorAll("#event-chips button")
     .forEach(b => b.classList.toggle("sel", b.dataset.ev === $("setup-event").value));
