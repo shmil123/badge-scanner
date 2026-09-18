@@ -195,7 +195,16 @@
   .linkbtn { display:block; width:100%; text-align:center; background:none; border:none; color:var(--dim);
     font-size:15px; font-weight:700; padding:14px; margin-top:6px; text-decoration:underline; }
   .scan-hint-line { text-align:center; color:var(--muted); font-size:15px; margin:12px 2px 2px; line-height:1.45; }
-  #scr-scan #videoWrap { flex:0 1 auto; max-height:44vh; min-height:200px; }
+  #scr-scan #videoWrap { flex:1 1 auto; max-height:44vh; min-height:120px; }
+  /* short screens (small/older phones): shrink the camera + tighten so the buttons
+     and the 'type it in' link always stay above the bottom nav — never buried */
+  @media (max-height:640px) {
+    #scr-scan #videoWrap { min-height:96px; max-height:34vh; }
+    .bigbtn { min-height:54px; margin-top:8px; font-size:17px; }
+    .bigbtn .ic { font-size:21px; }
+    .scan-hint-line { font-size:13px; margin:8px 2px 0; }
+    .linkbtn { padding:10px; }
+  }
   .signout-btn { width:100%; padding:15px; border-radius:999px; border:1.5px solid rgba(244,55,100,.4);
     background:rgba(244,55,100,.08); color:#ff9db2; font-size:16px; font-weight:800; margin-top:18px; }
   .signout-btn:active { transform:scale(.98); }
@@ -203,6 +212,10 @@
   #event-chips button { padding:14px 18px; font-size:16px; min-height:50px; }
   #bottomnav button { font-size:12px; }
   #bottomnav button svg { width:26px; height:26px; }
+  .assign-chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .assign-chips button { padding:12px 16px; border-radius:999px; border:1px solid var(--line);
+    background:rgba(255,255,255,.03); color:var(--muted); font-size:15px; font-weight:700; min-height:46px; }
+  .assign-chips button.sel { border-color:var(--lime); color:var(--lime); background:rgba(215,247,91,.12); }
   #previewflag { position:fixed; left:10px; bottom:calc(var(--nav-h) + 12px + env(safe-area-inset-bottom));
     z-index:70; background:rgba(244,55,100,.9); color:#fff; font-size:11px; font-weight:800; letter-spacing:.06em;
     padding:5px 10px; border-radius:999px; pointer-events:none; }
@@ -370,7 +383,9 @@
       <button data-v="Hot">🔥 Hot</button>
     </div>
     <label>Assign lead to</label>
-    <input id="f-assign" list="assign-list" autocomplete="off" placeholder="Who follows up? (defaults to you)">
+    <div class="assign-chips" id="assign-chips"></div>
+    <input id="f-assign" list="assign-list" autocomplete="off" placeholder="First name is enough" style="display:none; margin-top:8px">
+    <p class="sub" id="assign-hint" style="display:none; margin-top:6px">Just the first name is enough — pick from the list or type it.</p>
     <datalist id="assign-list"></datalist>
     <label>Notes — required</label>
     <textarea id="f-note" placeholder="What did they ask about? What's next?"></textarea>
@@ -413,7 +428,7 @@ const CONFIG = {
   SHARED_SECRET: "1947e1791e7f84ea245333a424e8e6fb",
   GOOGLE_CLIENT_ID: "390796699464-c09vqjstirfb6mjqtrr1h17bfb5nb1eg.apps.googleusercontent.com",
   ALLOWED_DOMAIN: "classiq.io",
-  APP_VERSION: "v18", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v19", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -902,10 +917,8 @@ function openForm(draft) {
   const mode = state.draft.mode || "manual";
   ["f-first","f-last","f-title","f-company","f-email","f-phone","f-note"].forEach(id => $(id).value = "");
   setHot("");
-  // Assign to: quick-pick from reps + teams, defaulting to the logged-in rep (their leads are theirs).
-  const teams = ["Partnership", "Sales", "APAC", "EMEA", "Americas"];
-  $("assign-list").innerHTML = [...state.remote.reps, ...teams].map(x => `<option>${esc(x)}</option>`).join("");
-  $("f-assign").value = state.rep || "";
+  // Assign to: one-tap chips (Me / teams / Someone else) so switching never needs deleting text.
+  buildAssign(mode === "edit" ? (state.draft.assignTo || state.rep) : state.rep);
   $("form-title").textContent = mode === "edit" ? "Edit lead" : "New lead";
   $("form-save").textContent = mode === "edit" ? "Save changes" : "Save lead";
   $("form-photonote").style.display = mode === "photo" ? "" : "none";
@@ -919,9 +932,45 @@ function openForm(draft) {
   if (mode === "edit") {
     setHot(state.draft.temperature === "Hot" ? "Hot" : "");
     $("f-note").value = state.draft.note || "";
-    $("f-assign").value = state.draft.assignTo || state.rep || "";
   }
   show("scr-form");
+}
+// ---- "Assign lead to" chips: Me (default) / teams / Someone else — one tap, no deleting ----
+var assignSel = { key: "me", val: "" };
+function buildAssign(defaultVal) {
+  defaultVal = String(defaultVal || "").trim();
+  var me = state.rep || "";
+  var meFirst = me.split(" ")[0] || "Me";
+  assignSel = (!defaultVal || defaultVal === me) ? { key: "me", val: me } : { key: "other", val: defaultVal };
+  $("assign-list").innerHTML = state.remote.reps.map(function (r) { return "<option>" + esc(r) + "</option>"; }).join("");
+  $("f-assign").value = assignSel.key === "other" ? assignSel.val : "";
+  var chips = [{ key: "me", label: "Me (" + esc(meFirst) + ")" }, { key: "other", label: "Assign to someone else" }];
+  $("assign-chips").innerHTML = chips.map(function (c) {
+    return '<button type="button" data-key="' + esc(c.key) + '">' + c.label + "</button>";
+  }).join("");
+  Array.prototype.forEach.call(document.querySelectorAll("#assign-chips button"), function (b) {
+    b.onclick = function () { pickAssign(b.dataset.key); };
+  });
+  renderAssign();
+}
+function pickAssign(key) {
+  if (key === "other") assignSel = { key: "other", val: $("f-assign").value.trim() };
+  else assignSel = { key: "me", val: state.rep || "" };
+  renderAssign();
+  if (key === "other") $("f-assign").focus();
+}
+function renderAssign() {
+  Array.prototype.forEach.call(document.querySelectorAll("#assign-chips button"), function (b) {
+    b.classList.toggle("sel", b.dataset.key === assignSel.key);
+  });
+  var other = assignSel.key === "other";
+  $("f-assign").style.display = other ? "" : "none";
+  $("assign-hint").style.display = other ? "" : "none";
+}
+function readAssign() {
+  if (assignSel.key === "other") return $("f-assign").value.trim();
+  if (assignSel.key === "me") return state.rep || "";
+  return assignSel.val;
 }
 $("form-showfields").onclick = (e) => {
   e.preventDefault();
@@ -978,7 +1027,7 @@ $("form-save").onclick = async () => {
     photoBlob: state.draft.photoBlob || null,
     lead: {
       event: state.event, rep: state.rep, repEmail: state.repEmail, fields,
-      temperature: hotSel, followUp: "", leadType: "", assignTo: $("f-assign").value.trim(),
+      temperature: hotSel, followUp: "", leadType: "", assignTo: readAssign(),
       note, badgeId: state.draft.badgeId || "",
       capturedAt: state.draft.capturedAt || new Date().toISOString(),
     },
