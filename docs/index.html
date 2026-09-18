@@ -195,6 +195,9 @@
   .linkbtn { display:block; width:100%; text-align:center; background:none; border:none; color:var(--dim);
     font-size:15px; font-weight:700; padding:14px; margin-top:6px; text-decoration:underline; }
   .scan-hint-line { text-align:center; color:var(--muted); font-size:15px; margin:12px 2px 2px; line-height:1.45; }
+  .scan-hero { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; }
+  .scan-hero-icon { font-size:76px; line-height:1; filter:drop-shadow(0 8px 24px rgba(215,247,91,.25)); }
+  .scan-hero-text { color:var(--muted); font-size:16px; line-height:1.5; max-width:300px; }
   #scr-scan #videoWrap { flex:1 1 auto; max-height:44vh; min-height:120px; }
   /* short screens (small/older phones): shrink the camera + tighten so the buttons
      and the 'type it in' link always stay above the bottom nav — never buried */
@@ -274,26 +277,13 @@
     </div>
     <button class="chip-change" id="scan-settings">Change</button>
   </div>
-  <div id="videoWrap">
-    <video id="video" playsinline muted></video>
-    <div class="reticle"></div>
-    <div id="scan-hint"></div>
-    <button id="cam-start">
-      <span style="font-size:38px">📷</span>
-      <span>Tap to start the camera</span>
-      <span style="font-size:12px; font-weight:400; color:var(--muted); max-width:280px; line-height:1.5">
-        Tip: to skip this next time, tap <b>aA</b> in the address bar → Website Settings → Camera → <b>Allow</b>
-      </span>
-    </button>
+  <div class="scan-hero">
+    <div class="scan-hero-icon">🪪</div>
+    <p class="scan-hero-text">Take a clear photo of the badge —<br>we'll read the details automatically.</p>
   </div>
-  <p class="scan-hint-line">Point at the badge — it reads by itself.<br>No code on the badge? Take a photo.</p>
   <button class="bigbtn primary" id="btn-takephoto"><span class="ic">📷</span> Take a photo</button>
   <button class="bigbtn ghost" id="btn-upload"><span class="ic">🖼️</span> Upload photo(s)</button>
   <button class="linkbtn" id="scan-manual">Type it in instead</button>
-  <div class="card" id="scan-camhelp" style="display:none; margin-top:12px">
-    Camera is blocked. On iPhone: aA menu → Website Settings → Camera → Allow, then reload.
-    Meanwhile use <b>Upload photo(s)</b> or <b>Type it in instead</b> above.
-  </div>
 </div>
 
 <!-- ============ TODAY (stats) ============ -->
@@ -431,7 +421,7 @@ const CONFIG = {
   ALLOWED_DOMAIN: "classiq.io",
   // Completed events — hidden from the rep event picker (their data stays in the sheet).
   HIDDEN_EVENTS: ["Q2B Copenhagen", "Black Hat Las Vegas", "Quantum.Tech World"],
-  APP_VERSION: "v23", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v24", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -510,7 +500,7 @@ function go(tab) {
   state.tab = tab;
   localStorage.setItem("bs_tab", tab); // refresh restores the same tab
   document.querySelectorAll("#bottomnav button").forEach(b => b.classList.toggle("cur", b.dataset.tab === tab));
-  if (tab === "scan") { show("scr-scan"); startCamera(false); }
+  if (tab === "scan") { show("scr-scan"); $("scan-event-name").textContent = state.event || "—"; $("scan-evt").textContent = state.rep; }
   if (tab === "stats") { show("scr-stats"); renderStats(); }
   if (tab === "leads") { show("scr-leads"); renderLeads(); }
   if (tab === "history") { show("scr-history"); renderHistory(false); }
@@ -748,9 +738,8 @@ function stopCamera() {
   clearInterval(state.scanTimer);
   state.scanTimer = null;
   if (state.stream) { state.stream.getTracks().forEach(t => t.stop()); state.stream = null; }
-  $("video").srcObject = null;
+  const _v = $("video"); if (_v) _v.srcObject = null;
 }
-$("cam-start").onclick = () => startCamera(true);
 $("scan-settings").onclick = (e) => { e.preventDefault(); fillSetup(); show("scr-setup"); };
 $("scan-manual").onclick = (e) => { e.preventDefault(); openForm({ mode: "manual" }); };
 $("btn-upload").onclick = (e) => { e.preventDefault(); stopCamera(); $("galleryInput").click(); };
@@ -773,22 +762,9 @@ function onQrDecoded(raw) {
   hint.style.display = "";
 }
 
-// Take-photo button: grab a full-res frame from the live stream (or native camera if not started)
-$("btn-takephoto").onclick = () => {
-  const video = $("video");
-  if (!video.videoWidth) { state.photoTarget = "lead"; $("photoInput").click(); return; }
-  const max = 1280;
-  const s = Math.min(1, max / Math.max(video.videoWidth, video.videoHeight));
-  const c = document.createElement("canvas");
-  c.width = Math.round(video.videoWidth * s);
-  c.height = Math.round(video.videoHeight * s);
-  c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
-  c.toBlob((blob) => {
-    if (!blob) { toast("Couldn't capture — try again"); return; }
-    if (navigator.vibrate) navigator.vibrate(60);
-    openForm({ photoBlob: blob, badgeId: state.pendingBadgeId, mode: "photo" });
-  }, "image/jpeg", 0.7);
-};
+// Take-photo button: always open the phone's full-screen native camera (clearest way
+// to shoot a badge). The resulting photo is read by the AI server-side at sync time.
+$("btn-takephoto").onclick = () => { state.photoTarget = "lead"; $("photoInput").click(); };
 
 // vCard / MECARD parsing; returns null for opaque payloads
 function parseBadgePayload(raw) {
@@ -1211,7 +1187,6 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<"
 (async function boot() {
   $("ver").textContent = CONFIG.APP_VERSION;
   if ("serviceWorker" in navigator) {
-    // check for a new version on every open, and reload once when it takes over
     navigator.serviceWorker.register("sw.js").then(reg => reg.update()).catch(() => {});
     let reloaded = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
