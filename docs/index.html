@@ -430,7 +430,7 @@ const CONFIG = {
   ALLOWED_DOMAIN: "classiq.io",
   // Completed events — hidden from the rep event picker (their data stays in the sheet).
   HIDDEN_EVENTS: ["Q2B Copenhagen", "Black Hat Las Vegas", "Quantum.Tech World"],
-  APP_VERSION: "v21", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v22", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -1165,6 +1165,13 @@ async function syncQueue(manual) {
   if (state.tab === "leads" && $("scr-leads").classList.contains("active")) renderLeads();
 }
 window.addEventListener("online", () => syncQueue(false));
+// A photo submit can take 20-30s server-side (badge extraction); if the phone sleeps,
+// backgrounds, or wifi hiccups in that window the row is written but the "ok" reply is
+// lost, leaving the lead stuck "pending". Retrying is cheap and self-heals it (the row
+// already exists, so the backend just confirms it). So re-sync whenever the app returns
+// to the foreground, and on a light timer.
+document.addEventListener("visibilitychange", () => { if (!document.hidden) syncQueue(false); });
+setInterval(() => { if (navigator.onLine) syncQueue(false); }, 45000);
 
 // ---------------- fuzzy event matching (mirror of the backend's sameEvent_) ----------------
 function sameEvent(a, b) {
