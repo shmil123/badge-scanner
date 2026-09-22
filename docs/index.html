@@ -255,6 +255,10 @@
           style="position:absolute; right:6px; top:6px; bottom:6px; width:44px; border:none; border-radius:9px; background:rgba(215,247,91,.14); color:var(--lime); font-size:19px">📷</button>
       </div>
       <div id="event-chips"></div>
+      <div class="banner red" id="setup-eventerr" style="display:none; margin-top:12px">
+        Couldn't load the event list — check your connection.
+        <button type="button" id="setup-retry-events" class="link" style="display:block; margin-top:6px; font-weight:900">Tap to retry</button>
+      </div>
       <p class="sub" style="font-size:12px; margin-top:8px">Tap an event above, type a new one, or tap 📷 to read it off any badge.</p>
       <button class="primary" id="setup-save">Start capturing</button>
       <p class="sub center" id="setup-status" style="margin-top:10px"></p>
@@ -421,7 +425,7 @@ const CONFIG = {
   ALLOWED_DOMAIN: "classiq.io",
   // Completed events — hidden from the rep event picker (their data stays in the sheet).
   HIDDEN_EVENTS: ["Q2B Copenhagen", "Black Hat Las Vegas", "Quantum.Tech World"],
-  APP_VERSION: "v24", // keep in sync with CACHE_VERSION in sw.js
+  APP_VERSION: "v25", // keep in sync with CACHE_VERSION in sw.js
 };
 // ======================================================
 
@@ -534,14 +538,25 @@ function handleAuthExpiry() {
   toast("Please sign in with your @" + CONFIG.ALLOWED_DOMAIN + " account again");
   renderSetup();
 }
-async function refreshRemoteConfig() {
+// Retries a few times with backoff before giving up — a flaky venue wifi or a cold
+// Apps Script start (or the backend's shared rate limit if many reps sign in in the
+// same minute) can make a single attempt fail even though the backend is fine.
+// Returns true on success so callers can show/hide a "couldn't load" fallback.
+async function refreshRemoteConfig(attempt) {
+  attempt = attempt || 0;
   try {
     const data = await api({ action: "config" });
     if (data.ok && data.events) {
       state.remote = { events: data.events, reps: data.reps };
       localStorage.setItem("bs_remote", JSON.stringify(state.remote));
+      return true;
     }
-  } catch (e) { /* offline — cached config is fine */ }
+  } catch (e) { /* network error — retry below */ }
+  if (attempt < 2) {
+    await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
+    return refreshRemoteConfig(attempt + 1);
+  }
+  return false;
 }
 
 // ---------------- daily check-in (progressive: identity once, then event) ----------------
@@ -558,7 +573,19 @@ function fillSetup() {
   renderEventChips();
   renderSetup();
   $("setup-status").textContent = "";
+  // No events loaded (yet) — show a clear, tappable fallback instead of a silently
+  // empty list (which used to make every typed event look "unknown").
+  $("setup-eventerr").style.display = visibleEvents().length === 0 ? "" : "none";
 }
+async function retryLoadEvents() {
+  const btn = $("setup-retry-events");
+  btn.textContent = "Retrying…"; btn.disabled = true;
+  await refreshRemoteConfig();
+  fillSetup();
+  btn.textContent = "Tap to retry"; btn.disabled = false;
+  if (visibleEvents().length > 0) toast("Event list loaded ✓");
+}
+$("setup-retry-events").onclick = (e) => { e.preventDefault(); retryLoadEvents(); };
 function renderEventChips() {
   const evs = visibleEvents().slice(0, 8);
   $("event-chips").innerHTML = evs.map(e => `<button type="button" data-ev="${esc(e)}">${esc(e)}</button>`).join("");
@@ -620,6 +647,14 @@ $("setup-save").onclick = () => {
   const rp = state.rep;
   if (!rp) { toast("Sign in with your Classiq Google account"); renderSetup(); return; }
   if (!ev) { toast("Enter the event name (or tap 📷 to read it off a badge)"); $("setup-event").focus(); return; }
+  // If the event list never loaded, don't offer "create new" — every event looks
+  // unknown in that state, and reps would end up creating duplicate/misspelled
+  // tabs instead of the real one. Push them to retry loading first.
+  if (visibleEvents().length === 0) {
+    toast("Event list didn't load — tap Retry above first");
+    $("setup-eventerr").style.display = "";
+    return;
+  }
   // typo protection: snap to an existing event ("QB2 tokyo" → "Q2B Tokyo")
   const match = state.remote.events.find(e => sameEvent(e, ev));
   if (match) {
