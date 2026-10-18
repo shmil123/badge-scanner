@@ -37,6 +37,11 @@ var RESERVED_TABS = ["TEMPLATE", "Config", "_sync"];
 var HAIKU_MODEL = "claude-haiku-4-5-20251001";
 var PHOTO_FOLDER = "Badge Scanner Photos";
 
+// Kill switch (Oct 18 2026): app paused pending a compliance review. While true, every
+// request is refused before it touches the sheet, Drive or the Anthropic API.
+// To restore: set to false and redeploy.
+var PAUSED = true;
+
 // Config moved behind the shared secret (POST action=config) — a bare GET must
 // not enumerate event names or rep names.
 function doGet(e) {
@@ -60,6 +65,7 @@ function handleConfig_(req) {
 }
 
 function doPost(e) {
+  if (PAUSED) return json_({ ok: false, error: "Badge scanner is paused" });
   var req;
   try {
     req = JSON.parse(e.postData.contents);
